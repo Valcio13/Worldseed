@@ -1,4 +1,4 @@
-# Copy to .dev.vars for local Pages Functions development. Do not use production secrets here.
+# Copy to .dev.vars for local Worker development. Do not use production secrets here.
 ETHEREUM_SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 HEMI_SEPOLIA_RPC_URL=https://testnet.rpc.hemi.network/rpc
 BITCOIN_TESTNET4_API_URL=https://mempool.space/testnet4/api

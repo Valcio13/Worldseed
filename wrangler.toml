@@ -1,6 +1,11 @@
 name = "worldseed-h2-candidates"
 compatibility_date = "2026-10-14"
-pages_build_output_dir = "./dist"
+main = "src/worker.ts"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
 
 [[d1_databases]]
 binding = "WORLDSEED_DB"

@@ -48,24 +48,26 @@ npm run contract:test
 
 `npm run build` typechecks and writes the production site to `dist/`. Hardhat compiles with Solidity 0.8.24; the lockfile pins the installed dependency graph for `npm ci`.
 
-## Deploy the frontend to Cloudflare Pages
+## Deploy to Cloudflare Workers
 
-Create a Cloudflare Pages project from the repository and set:
+Connect the repository to a Cloudflare Workers Builds project and set:
 
-| Setting                | Value                                                                           |
-| ---------------------- | ------------------------------------------------------------------------------- |
-| Build command          | `npm run build`                                                                 |
-| Build output directory | `dist`                                                                          |
-| Node.js version        | `22`                                                                            |
-| Environment variable   | `VITE_WORLDSEED_V2_CONTRACT_ADDRESS=0x7695494E1BB9f0696A52564BF15AA244819a882A` |
+| Setting                 | Value                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| Build command           | `npm run build`                                                                 |
+| Worker assets directory | `dist` (configured in `wrangler.toml`; no Pages output setting is needed)       |
+| Node.js version         | `22`                                                                            |
+| Environment variable    | `VITE_WORLDSEED_V2_CONTRACT_ADDRESS=0x7695494E1BB9f0696A52564BF15AA244819a882A` |
 
-The contract address is public and embedded in the browser build. Do not add `HEMI_SEPOLIA_PRIVATE_KEY`, `HEMI_MAINNET_PRIVATE_KEY`, or other secrets to Pages settings. Pages provides SPA fallback for this project because it has no top-level `404.html`. After deployment, test the HTTPS origin, refresh, the Seed Shrine lazy-loaded 2048 screen, wallet connection, and direct navigation.
+Use Workers Builds for `Valcio13/Worldseed`, branch `main`. Set the build command to `npm run build` and the deploy command to `npx wrangler deploy`. The Worker entrypoint in `src/worker.ts` serves the Vite assets and routes the candidate API. Do not use `npx wrangler pages deploy dist`; this repository now targets the Workers runtime.
 
-See [deployment and release gates](docs/deployment.md) for testnet details, wallet QA steps, and the Mainnet checklist. Cloudflare Pages has not been deployed from this workspace.
+The contract address is public and embedded in the browser build. Do not add `HEMI_SEPOLIA_PRIVATE_KEY`, `HEMI_MAINNET_PRIVATE_KEY`, or other secrets to Workers Builds settings. Static asset configuration provides SPA fallback. After deployment, test the HTTPS origin, refresh, the Seed Shrine lazy-loaded 2048 screen, wallet connection, API routes, and direct navigation.
 
-See [H2 candidate issuance](docs/H2-CANDIDATE-SERVICE.md) for source confirmation rules, D1 setup, Functions configuration, signing keys, and current limitations. The H2 service needs a D1 binding and server-side variables/secrets; do not expose its attestation key in a browser build.
+See [deployment and release gates](docs/deployment.md) for testnet details, wallet QA steps, and the Mainnet checklist. Cloudflare Workers has not been deployed from this workspace.
 
-The [H3 V2 contract implementation and review notes](docs/H3-V2-CONTRACT-PROPOSAL.md) describe the fresh-state V2 contract. V1 remains a separate testnet reference; V2 does not migrate V1 balances. Candidate issuance also requires the Pages Functions and D1 server bindings described in the H2 guide.
+See [H2 candidate issuance](docs/H2-CANDIDATE-SERVICE.md) for source confirmation rules, D1 setup, Worker bindings, signing keys, and current limitations. The H2 service needs a D1 binding and server-side variables/secrets; do not expose its attestation key in a browser build.
+
+The [H3 V2 contract implementation and review notes](docs/H3-V2-CONTRACT-PROPOSAL.md) describe the fresh-state V2 contract. V1 remains a separate testnet reference; V2 does not migrate V1 balances. Candidate issuance also requires the Worker and D1 bindings described in the H2 guide.
 
 ## Project structure
 
@@ -81,7 +83,7 @@ The [H3 V2 contract implementation and review notes](docs/H3-V2-CONTRACT-PROPOSA
 ## Known limitations and release status
 
 - A separate clean-wallet browser journey on the public HTTPS build is still required. Automated tests and direct contract transactions do not verify injected-wallet prompts or hosted browser behavior.
-- Cloudflare Pages hosting has not been configured or published.
+- Cloudflare Workers hosting has not been configured or published.
 - The production build reports a 611.81 KB main JavaScript chunk (184.91 KB gzip). The 2048 game is already emitted as a separate lazy-loaded chunk.
 - Rewarded 2048 rounds require multiple wallet approvals. A previously exercised 140-move round used eight approvals and 9,672,779 gas; actual usage varies.
 - Economy values and contest acceptance remain subject to release review. Do not treat this project as Mainnet-ready based on automated tests alone.

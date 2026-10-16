@@ -29,16 +29,20 @@ The Vite development server binds to port `5173` with strict port checking. The 
 
 ## Public HTTPS staging
 
-Cloudflare Pages is the selected simple static host. It serves the built files and supports custom domains with HTTPS. Configure the Pages project with:
+Cloudflare Workers with Workers Builds is the selected host. The Worker serves the built files and candidate API on one HTTPS origin. Configure the Workers project with:
 
 - Build command: `npm run build`
-- Build output directory: `dist`
+- Worker assets directory: `dist` (configured in `wrangler.toml`; no Pages output setting is needed)
 - Production build variable: `VITE_WORLDSEED_V2_CONTRACT_ADDRESS=0x7695494E1BB9f0696A52564BF15AA244819a882A`
 - Node.js version: `22`
 
-Cloudflare Pages treats a project without a top-level `404.html` as a single-page application and serves `index.html` for unmatched navigation paths. This project has no `404.html`, so no wildcard rewrite is needed. The app currently navigates its game screens in client state rather than through URL routes. Keep the Vite base path at `/` when using a project root or `*.pages.dev` origin.
+For Workers Builds connected to `Valcio13/Worldseed` on branch `main`, set the build command to `npm run build` and the deploy command to `npx wrangler deploy`. Wrangler reads `src/worker.ts` and the static-assets configuration from `wrangler.toml`. Do not use `npx wrangler pages deploy dist`; that command targets Pages API deployment.
 
-`VITE_WORLDSEED_V2_CONTRACT_ADDRESS` is public and is embedded in browser assets at build time. No RPC credential or private key is required by the frontend. Do not define `HEMI_SEPOLIA_PRIVATE_KEY`, `HEMI_MAINNET_PRIVATE_KEY`, or any other secret in the Pages build environment. Hosting authorization and account credentials are required to publish; none are configured here, so no preview URL has been created. `VITE_WORLDSEED_CONTRACT_ADDRESS` remains the separate V1 reference setting.
+The Worker static-assets configuration uses SPA fallback for unmatched navigation paths. The app currently navigates its game screens in client state rather than through URL routes. Keep the Vite base path at `/`.
+
+`VITE_WORLDSEED_V2_CONTRACT_ADDRESS` is public and is embedded in browser assets at build time. No RPC credential or private key is required by the frontend. Do not define `HEMI_SEPOLIA_PRIVATE_KEY`, `HEMI_MAINNET_PRIVATE_KEY`, or any other secret in the Workers Builds environment. Hosting authorization and account credentials are required to publish; none are configured here, so no preview URL has been created. `VITE_WORLDSEED_CONTRACT_ADDRESS` remains the separate V1 reference setting.
+
+The repository's [wrangler.toml](../wrangler.toml) now defines the Worker entrypoint, static assets, D1 binding metadata, and migrations. The `database_id` placeholder must be replaced only after the intended remote D1 database is identified or created through an authorized Cloudflare operation.
 
 After publishing, verify the HTTPS origin loads, open the app and the 2048 screen, refresh both screens, and confirm there are no failed dynamic asset requests. Connect a disposable wallet only after confirming it is set to Hemi Sepolia.
 
@@ -86,7 +90,7 @@ npm run contract:deploy:v2:testnet
 
 Record the printed V2 address, deployment transaction, block, receipt status, and gas. Read the deployed `attester()` and compare it to `WORLDSEED_ATTESTER_ADDRESS`. Do not reuse the V1 address for V2 configuration.
 
-### Remote D1 and Pages Functions
+### Remote D1 and Worker bindings
 
 Identify the intended production D1 database first. If it does not exist, create it once, then apply migrations from the repository:
 
@@ -98,7 +102,7 @@ npx wrangler d1 create worldseed-h2
 npx wrangler d1 migrations apply worldseed-h2 --remote
 ```
 
-In the Cloudflare Pages project, bind that database as `WORLDSEED_DB`. Configure these **server-side** variables and secrets:
+In the Cloudflare Workers project, bind that database as `WORLDSEED_DB`. Configure these **server-side** variables and secrets:
 
 ```text
 ETHEREUM_SEPOLIA_RPC_URL=<Ethereum Sepolia RPC>
@@ -106,12 +110,12 @@ HEMI_SEPOLIA_RPC_URL=<Hemi Sepolia RPC>
 BITCOIN_TESTNET4_API_URL=https://mempool.space/testnet4/api
 WORLDSEED_V2_CONTRACT_ADDRESS=0x7695494E1BB9f0696A52564BF15AA244819a882A
 WORLDSEED_V2_ATTESTER_ADDRESS=0x8E2F2FEB6dCfBD6FBA3DC4F0c17e406941806D9B
-WORLDSEED_ATTESTATION_PRIVATE_KEY=<attester key as a Pages secret>
+WORLDSEED_ATTESTATION_PRIVATE_KEY=<attester key as a Worker secret>
 ```
 
-Set `WORLDSEED_ATTESTATION_PRIVATE_KEY` with `wrangler pages secret put` or the Pages dashboard secret UI. Never put it in a `VITE_*` variable. The candidate function fails closed if the derived signer does not match the configured attester address.
+Set `WORLDSEED_ATTESTATION_PRIVATE_KEY` with `wrangler secret put` or the Workers dashboard secret UI. Never put it in a `VITE_*` variable. The candidate function fails closed if the derived signer does not match the configured attester address.
 
-After configuring Pages, build with the public browser variable only:
+After configuring Workers Builds, build with the public browser variable only:
 
 ```text
 VITE_WORLDSEED_V2_CONTRACT_ADDRESS=0x7695494E1BB9f0696A52564BF15AA244819a882A
@@ -121,9 +125,9 @@ Then verify the deployed address, chain ID, attester address, D1 binding, and a 
 
 ### Rollback and blockers
 
-If deployment or attester configuration fails, stop issuance, remove the Pages secret/binding, and leave the existing V1 and V2 testnet contracts untouched. Do not redeploy to Mainnet. A new V2 deployment requires a new address propagation and a fresh D1/service configuration review.
+If deployment or attester configuration fails, stop issuance, remove the Worker secret/binding, and leave the existing V1 and V2 testnet contracts untouched. Do not redeploy to Mainnet. A new V2 deployment requires a new address propagation and a fresh D1/service configuration review.
 
-Current blockers remain connected-browser testing, Hemi Sepolia gas measurements for every V2 write path, and a hosted HTTPS build verification. No deployment or Pages authorization is assumed by this document.
+Current blockers remain connected-browser testing, Hemi Sepolia gas measurements for every V2 write path, and a hosted HTTPS build verification. No deployment or Workers authorization is assumed by this document.
 
 ## Clean-wallet manual QA
 

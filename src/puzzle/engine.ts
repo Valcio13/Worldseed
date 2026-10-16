@@ -29,6 +29,12 @@ export function directionFromCode(code: number): Direction | undefined {
   return (['left', 'right', 'up', 'down'] as const)[code];
 }
 
+/** Responsive board-width unit: long labels shrink while every grid cell stays fixed. */
+export function tileFontSizeCqw(tileExponent: number): number {
+  const label = tileExponent > 0 ? String(2 ** tileExponent) : '';
+  return Math.max(2.5, 7 / Math.max(1, label.length));
+}
+
 export interface PuzzleState {
   seed: number;
   rngState: number;

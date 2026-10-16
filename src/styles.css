@@ -1241,11 +1241,13 @@ h1 em,
   position: relative;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
   gap: 8px;
   aspect-ratio: 1;
   padding: 8px;
   border-radius: 6px;
   background: #c9d5c1;
+  container-type: inline-size;
   touch-action: none;
   outline: none;
 }
@@ -1255,15 +1257,19 @@ h1 em,
 }
 .puzzle-tile {
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   display: grid;
   place-items: center;
   border: 1px solid rgba(71, 103, 75, 0.08);
   border-radius: 5px;
   background: rgba(249, 249, 235, 0.68);
   color: transparent;
-  font:
-    600 clamp(19px, 4vw, 34px) 'DM Sans',
-    sans-serif;
+  font-family: 'DM Sans', sans-serif;
+  font-size: clamp(10px, var(--puzzle-tile-font, 7cqw), 34px);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
   transition:
     background 120ms ease,
     transform 120ms ease,
@@ -1592,9 +1598,6 @@ h1 em,
   .puzzle-board {
     gap: 5px;
     padding: 5px;
-  }
-  .puzzle-tile {
-    font-size: clamp(18px, 7vw, 31px);
   }
 }
 
@@ -3298,6 +3301,54 @@ body {
   z-index: 6;
 }
 
+.scene-landmarks {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  pointer-events: none;
+}
+
+.scene-landmark {
+  position: absolute;
+  display: grid;
+  width: clamp(34px, 6vw, 68px);
+  justify-items: center;
+  transform: translate(-50%, -50%);
+  color: #f7f0bb;
+  text-shadow: 0 2px 3px rgba(45, 74, 52, 0.7);
+  opacity: 0.88;
+}
+
+.scene-landmark i {
+  display: grid;
+  width: clamp(23px, 3vw, 34px);
+  height: clamp(23px, 3vw, 34px);
+  place-items: center;
+  border: 1px solid rgba(245, 225, 143, 0.68);
+  border-radius: 50%;
+  background: rgba(71, 101, 65, 0.72);
+  color: #ffe9a0;
+  font-size: clamp(15px, 2vw, 25px);
+  font-style: normal;
+  box-shadow: 0 2px 6px rgba(50, 80, 49, 0.25);
+}
+
+.scene-landmark b {
+  margin-top: 2px;
+  font-size: clamp(7px, 0.85vw, 11px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.scene-landmark--merchant i {
+  color: #f4c27d;
+}
+
+.scene-landmark--tree i {
+  color: #c9f0a0;
+}
+
 .resident {
   width: 48px;
   height: 48px;
@@ -3847,6 +3898,120 @@ body {
 
 .puzzle-load-error details {
   color: #536858;
+}
+
+.candidate-set {
+  max-width: 1120px;
+  margin: 24px auto;
+  padding: clamp(18px, 3vw, 32px);
+  border: 1px solid #c6d4b8;
+  border-radius: 20px;
+  background: #f7f8e9;
+  color: #254b39;
+}
+
+.candidate-set h2 {
+  margin: 4px 0 8px;
+  font: 700 clamp(24px, 4vw, 34px) var(--font-display, Georgia, serif);
+}
+
+.candidate-set__notice {
+  max-width: 800px;
+  line-height: 1.55;
+  color: #536858;
+}
+
+.candidate-error {
+  padding: 12px 16px;
+  border: 1px solid #d89f8e;
+  border-radius: 12px;
+  color: #743c35;
+  background: #fff0e9;
+}
+
+.candidate-set__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.candidate-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #d5dfc9;
+  border-radius: 16px;
+  background: #fffdf1;
+}
+
+.candidate-card__island {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  aspect-ratio: 1;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 12px;
+  background: #315c48;
+}
+
+.candidate-cell {
+  min-width: 0;
+  border-radius: 3px;
+  background: #98b975;
+}
+
+.candidate-cell--shore {
+  background: #74b3a0;
+}
+.candidate-cell--rock {
+  background: #7e8070;
+}
+.candidate-cell--heart {
+  background: #d9ad69;
+}
+.candidate-cell.is-placeable {
+  box-shadow: inset 0 0 0 1px rgb(237 244 198 / 45%);
+}
+.candidate-cell.is-witness {
+  outline: 1px solid rgb(255 244 170 / 75%);
+  outline-offset: -2px;
+}
+
+.candidate-card h3 {
+  margin: 12px 0 4px;
+  font: 700 18px var(--font-display, Georgia, serif);
+}
+
+.candidate-card p {
+  min-height: 36px;
+  color: #536858;
+}
+.candidate-card small {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #647362;
+}
+
+.candidate-card button {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 12px;
+  border: 1px solid #648654;
+  border-radius: 999px;
+  color: #fffdf1;
+  background: #315c48;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .candidate-set__grid {
+    grid-template-columns: 1fr;
+  }
+  .candidate-card__island {
+    max-width: 360px;
+  }
 }
 
 .puzzle-load-error pre {

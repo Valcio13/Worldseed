@@ -9,7 +9,9 @@ export function terrainLayerForCell(terrain: Terrain, habitat: Habitat | null): 
   if (habitat === 'forest') return 'forest';
   if (terrain === 'shore') return 'water';
   if (terrain === 'rock') return 'damaged';
-  return 'grass';
+  // Empty meadow is the damaged starting state. Healthy color comes from a
+  // placed habitat, so restoration reads clearly without changing the puzzle.
+  return 'damaged';
 }
 
 /** Stable visual variation from the generated island seed and board coordinates. */

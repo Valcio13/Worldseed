@@ -1,5 +1,6 @@
 import { BOARD_SIZE, REGIONS, type Cell } from './types';
 import { healthyAt, orthogonalNeighbors } from './rules';
+import { CHARACTER_REGISTRY } from './characterRegistry';
 
 export interface BoardBounds {
   left: number;
@@ -28,36 +29,10 @@ export function characterPresentationClasses(
   ];
 }
 
-const cast: Array<
-  Omit<Resident, 'x' | 'y'> & { x: number; y: number; healthy: number; forests: number }
-> = [
-  { id: 'pip', name: 'Pip the woodland scout', kind: 'animal', x: 1, y: 1, healthy: 0, forests: 0 },
-  { id: 'moss', name: 'Moss the little slime', kind: 'animal', x: 2, y: 3, healthy: 3, forests: 0 },
-  { id: 'tavi', name: 'Tavi the explorer', kind: 'villager', x: 1, y: 4, healthy: 4, forests: 0 },
-  {
-    id: 'luma',
-    name: 'Luma the forest spirit',
-    kind: 'spirit',
-    x: 2,
-    y: 5,
-    healthy: 0,
-    forests: 1,
-  },
-  {
-    id: 'rowan',
-    name: 'Rowan the caretaker',
-    kind: 'villager',
-    x: 4,
-    y: 4,
-    healthy: 7,
-    forests: 1,
-  },
-];
-
 export function visibleResidents(healthy: number, forests: number): Resident[] {
-  return cast
-    .filter((resident) => healthy >= resident.healthy && forests >= resident.forests)
-    .map(({ id, name, kind, x, y }) => ({ id, name, kind, x, y }));
+  return CHARACTER_REGISTRY.filter(
+    (resident) => healthy >= resident.unlockHealthy && forests >= resident.unlockForests,
+  ).map(({ id, name, kind, home }) => ({ id, name, kind, x: home.x, y: home.y }));
 }
 
 export function residentsNearCell(residents: Resident[], index: number): Resident[] {

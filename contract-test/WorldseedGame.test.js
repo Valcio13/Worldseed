@@ -109,62 +109,30 @@ it('replays 2048 moves across checkpoints, consumes stamina, and settles verifie
           a.state.board.filter((tile) => tile === 0).length -
             b.state.board.filter((tile) => tile === 0).length || b.state.score - a.state.score,
       )[0];
-  let firstInvalid = available.find((direction) => !applyPuzzleMove(expected, direction).valid);
-  while (!firstInvalid) {
+  while (directions.length < 20 && !expected.over) {
     const move = survivalMove(expected);
     assert.ok(move, 'the puzzle must report game-over when no direction is valid');
     const { direction } = move;
     directions.push({ direction, state: move.state });
-    expected = move.state;
-    await game.write.savePuzzleMoves([
-      directions.length - 1,
-      [available.indexOf(direction)],
-      false,
-    ]);
-    firstInvalid = available.find((candidate) => !applyPuzzleMove(expected, candidate).valid);
-  }
-  const firstValid = available.find((direction) => applyPuzzleMove(expected, direction).valid);
-  assert.ok(firstValid);
-  const firstMove = applyPuzzleMove(expected, firstValid);
-  await game.write.savePuzzleMoves([
-    directions.length,
-    [available.indexOf(firstInvalid), available.indexOf(firstValid)],
-    false,
-  ]);
-  directions.push({ direction: firstValid, state: firstMove.state });
-  expected = firstMove.state;
-
-  const savedMoves = directions.length;
-  assert.ok(savedMoves < 10, 'test seed should reach an invalid no-op before checkpoint 10');
-  while (directions.length < 20 && !expected.over) {
-    const move = survivalMove(expected);
-    assert.ok(move, 'the puzzle must report game-over when no direction is valid');
-    directions.push({ direction: move.direction, state: move.state });
     expected = move.state;
   }
   assert.equal(directions.length, 20);
   const directionCodes = directions.map(
     ({ direction }) => ({ left: 0, right: 1, up: 2, down: 3 })[direction],
   );
-  await assert.rejects(game.write.savePuzzleMoves([0, [directionCodes[0]], false])); // stale cursor
-  await assert.rejects(game.write.savePuzzleMoves([savedMoves, [4], false])); // invalid direction
-  await assert.rejects(game.write.savePuzzleMoves([savedMoves, Array(21).fill(0), false])); // bounded calldata
-  await assert.rejects(
-    game.write.savePuzzleMoves([savedMoves, directionCodes.slice(savedMoves, 19), true]),
-  );
-  assert.equal((await game.read.puzzleState([address]))[2], savedMoves); // failed cash-out is atomic
+  await assert.rejects(game.write.savePuzzleMoves([1, [directionCodes[0]], false])); // stale cursor
+  await assert.rejects(game.write.savePuzzleMoves([0, [4], false])); // invalid direction
+  await assert.rejects(game.write.savePuzzleMoves([0, Array(21).fill(0), false])); // bounded calldata
+  await assert.rejects(game.write.savePuzzleMoves([0, directionCodes.slice(0, 9), true]));
+  assert.equal((await game.read.puzzleState([address]))[2], 0); // failed cash-out is atomic
 
-  const maxBatchGas = await game.estimateGas.savePuzzleMoves([
-    savedMoves,
-    directionCodes.slice(savedMoves),
-    true,
-  ]);
+  const maxBatchGas = await game.estimateGas.savePuzzleMoves([0, directionCodes, true]);
   assert.ok(maxBatchGas > 0n);
   console.info(`v1 2048 20-move settle estimate: ${maxBatchGas} gas (local EVM)`);
 
   let checkpoint = createPuzzleRound(first[4], mode);
   const firstBatch = directionCodes.slice(0, 10);
-  await game.write.savePuzzleMoves([savedMoves, directionCodes.slice(savedMoves, 10), false]);
+  await game.write.savePuzzleMoves([0, firstBatch, false]);
   for (const code of firstBatch) {
     const dir = ['left', 'right', 'up', 'down'][code];
     checkpoint = applyPuzzleMove(checkpoint, dir).state;

@@ -1,0 +1,9 @@
+name = "worldseed-h2-candidates"
+compatibility_date = "2026-10-14"
+pages_build_output_dir = "./dist"
+
+[[d1_databases]]
+binding = "WORLDSEED_DB"
+database_name = "worldseed-h2"
+database_id = "replace-with-created-d1-database-id"
+migrations_dir = "db/migrations"

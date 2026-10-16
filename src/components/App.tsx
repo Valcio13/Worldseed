@@ -20,10 +20,13 @@ import {
   useReadContract,
   useSwitchChain,
   useWriteContract,
+  useSignMessage,
 } from 'wagmi';
 import {
   gameContractAbi,
   gameContractAddress,
+  expeditionContractAddress,
+  expeditionContractAbi,
   TARGET_CHAIN_ID,
   TARGET_CHAIN_NAME,
 } from '../blockchain/config';
@@ -48,6 +51,10 @@ import { loadGuestGame, saveGuestGame } from '../persistence/localSave';
 import { playIslandSound } from '../game/sound';
 import { requireSuccessfulReceipt, transactionFailureMessage } from '../blockchain/transactions';
 import { IslandTerrain } from './IslandTerrain';
+import { CandidatePreviews } from './CandidatePreviews';
+import { generateIslandV2 } from '../game/generateIsland';
+import { fetchCandidateSet, persistCandidateSetSelection } from '../expeditions/client';
+import type { CandidateSet, IslandCandidate } from '../expeditions/model';
 
 const PuzzleGame = lazy(() =>
   import('./PuzzleGame').then((module) => ({ default: module.PuzzleGame })),
@@ -176,14 +183,74 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
     functionName: 'islandState',
     args: account.address ? [account.address] : undefined,
     query: {
-      enabled: Boolean(gameContractAddress && account.address && chainId === TARGET_CHAIN_ID),
+      enabled: Boolean(
+        !expeditionContractAddress &&
+        gameContractAddress &&
+        account.address &&
+        chainId === TARGET_CHAIN_ID,
+      ),
     },
+  });
+  const activeExpedition = useReadContract({
+    address: expeditionContractAddress,
+    abi: expeditionContractAbi,
+    functionName: 'activeExpeditionId',
+    args: account.address ? [account.address] : undefined,
+    query: {
+      enabled: Boolean(expeditionContractAddress && account.address && chainId === TARGET_CHAIN_ID),
+    },
+  });
+  const nextExpeditionNumber = useReadContract({
+    address: expeditionContractAddress,
+    abi: expeditionContractAbi,
+    functionName: 'nextExpeditionNumber',
+    args: account.address ? [account.address] : undefined,
+    query: {
+      enabled: Boolean(expeditionContractAddress && account.address && chainId === TARGET_CHAIN_ID),
+    },
+  });
+  const v2ExpeditionState = useReadContract({
+    address: expeditionContractAddress,
+    abi: expeditionContractAbi,
+    functionName: 'expeditionState',
+    args:
+      account.address && activeExpedition.data
+        ? [account.address, activeExpedition.data]
+        : undefined,
+    query: {
+      enabled: Boolean(expeditionContractAddress && account.address && activeExpedition.data),
+    },
+  });
+  const v2ExpeditionBoard = useReadContract({
+    address: expeditionContractAddress,
+    abi: expeditionContractAbi,
+    functionName: 'expeditionBoard',
+    args:
+      account.address && activeExpedition.data
+        ? [account.address, activeExpedition.data]
+        : undefined,
+    query: {
+      enabled: Boolean(expeditionContractAddress && account.address && activeExpedition.data),
+    },
+  });
+  const v2GoldBalance = useReadContract({
+    address: expeditionContractAddress,
+    abi: expeditionContractAbi,
+    functionName: 'goldBalances',
+    args: account.address ? [account.address] : undefined,
+    query: { enabled: Boolean(expeditionContractAddress && account.address) },
   });
   const currentWeek = useReadContract({
     address: gameContractAddress,
     abi: gameContractAbi,
     functionName: 'currentWeek',
     query: { enabled: Boolean(gameContractAddress) },
+  });
+  const v2CurrentWeek = useReadContract({
+    address: expeditionContractAddress,
+    abi: expeditionContractAbi,
+    functionName: 'currentWeek',
+    query: { enabled: Boolean(expeditionContractAddress) },
   });
   const worldTree = useReadContract({
     address: gameContractAddress,
@@ -192,14 +259,25 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
     args: currentWeek.data === undefined ? undefined : [currentWeek.data],
     query: { enabled: Boolean(gameContractAddress && currentWeek.data !== undefined) },
   });
+  const v2WorldTree = useReadContract({
+    address: expeditionContractAddress,
+    abi: expeditionContractAbi,
+    functionName: 'weeklyContributions',
+    args: v2CurrentWeek.data === undefined ? undefined : [v2CurrentWeek.data],
+    query: { enabled: Boolean(expeditionContractAddress && v2CurrentWeek.data !== undefined) },
+  });
   const goldBalance = useReadContract({
     address: gameContractAddress,
     abi: gameContractAbi,
     functionName: 'goldBalances',
     args: account.address ? [account.address] : undefined,
-    query: { enabled: Boolean(gameContractAddress && account.address) },
+    query: {
+      enabled: Boolean(!expeditionContractAddress && gameContractAddress && account.address),
+    },
   });
+  const displayedGold = expeditionContractAddress ? v2GoldBalance.data : goldBalance.data;
   const { writeContractAsync } = useWriteContract();
+  const { signMessageAsync } = useSignMessage();
   const [game, setGame] = useState<GameState>(() => createGameState());
   const [chainCursor, setChainCursor] = useState(0n);
   const [pendingActions, setPendingActions] = useState<number[]>([]);
@@ -222,6 +300,11 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
   const [cameraPan, setCameraPan] = useState({ x: 0, y: 0 });
   const [showMerchant, setShowMerchant] = useState(false);
   const [showWorldTree, setShowWorldTree] = useState(false);
+  const [candidateSet, setCandidateSet] = useState<CandidateSet | null>(null);
+  const [candidateSource, setCandidateSource] = useState<string | null>(null);
+  const [candidateLoading, setCandidateLoading] = useState(false);
+  const [candidateError, setCandidateError] = useState('');
+  const [showCandidates, setShowCandidates] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(soundPreference);
   const [freshTile, setFreshTile] = useState<number | null>(null);
   const [reactingResidents, setReactingResidents] = useState<string[]>([]);
@@ -305,7 +388,7 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
     ...residentPositions[resident.id],
   }));
   const heartReady = isHeartComplete(game.island.cells, game.unlockedThrough);
-  const worldPoints = Number(worldTree.data ?? 0);
+  const worldPoints = Number((expeditionContractAddress ? v2WorldTree.data : worldTree.data) ?? 0);
   const treeStage = Math.min(4, Math.floor(worldPoints / 25));
   const treeStageNames = ['Seedling', 'Sapling', 'Canopy', 'Grove', 'Old-growth'];
 
@@ -400,7 +483,7 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
 
   useEffect(() => {
     const state = chainState.data;
-    if (!state || !state[0] || !account.address) return;
+    if (expeditionContractAddress || !state || !state[0] || !account.address) return;
     const restored = createGameState(String(state[4]), false);
     restored.island.cells = restored.island.cells.map((cell, index) => ({
       ...cell,
@@ -460,6 +543,78 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [chainState.data, account.address]);
+
+  useEffect(() => {
+    const state = v2ExpeditionState.data;
+    const board = v2ExpeditionBoard.data;
+    const expeditionId = activeExpedition.data;
+    if (
+      !expeditionContractAddress ||
+      !account.address ||
+      !expeditionId ||
+      state?.[0] !== 1 ||
+      !board
+    )
+      return;
+    const restored = createGameState(String(state[4]), false);
+    restored.island = generateIslandV2(String(state[4]));
+    restored.island.cells = restored.island.cells.map((cell, index) => ({
+      ...cell,
+      habitat:
+        board[0][index] === 0
+          ? null
+          : (['', 'water', 'grass', 'forest'][board[0][index]!] as Habitat),
+    }));
+    restored.inventory = { water: board[1][0]!, grass: board[1][1]!, forest: board[1][2]! };
+    restored.unlockedThrough = state[2];
+    restored.claimedRegions = REGIONS.filter((_, index) => board[2][index]).map(
+      (region) => region.id,
+    );
+    restored.actionCount = Number(state[3]);
+    const queued: number[] = [];
+    try {
+      const saved = JSON.parse(localStorage.getItem(walletSaveKey(account.address)) ?? 'null') as {
+        seed?: string;
+        cursor?: string;
+        actions?: unknown;
+      } | null;
+      if (
+        saved?.seed === restored.island.seed &&
+        saved.cursor === String(state[3]) &&
+        Array.isArray(saved.actions)
+      ) {
+        for (const code of saved.actions) {
+          if (!Number.isInteger(code) || code < 0 || code > 195) break;
+          const habitat = code % 4;
+          const action =
+            habitat === 0
+              ? { type: 'remove' as const, index: Math.floor(code / 4) }
+              : {
+                  type: 'place' as const,
+                  index: Math.floor(code / 4),
+                  habitat: ['', 'water', 'grass', 'forest'][habitat] as Habitat,
+                };
+          const next = applyAction(restored, action);
+          if (next.error) break;
+          Object.assign(restored, next.state);
+          queued.push(code);
+        }
+      }
+    } catch {
+      // Confirmed expedition state remains the recovery source if local pending data is malformed.
+    }
+    const timer = window.setTimeout(() => {
+      setGame(restored);
+      setChainCursor(state[3]);
+      setPendingActions(queued);
+      setNotice(
+        queued.length
+          ? `Your active V2 expedition and ${queued.length} unsaved action(s) were restored.`
+          : 'Your active V2 expedition was restored from Hemi Sepolia.',
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [v2ExpeditionState.data, v2ExpeditionBoard.data, activeExpedition.data, account.address]);
 
   useEffect(() => {
     if (game.demo || !account.address) return;
@@ -660,6 +815,102 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
     setNotice('A new demo island is ready. Your wallet progress is never affected.');
   }
 
+  async function loadCandidates() {
+    if (!account.address || chainId !== TARGET_CHAIN_ID) return;
+    setCandidateLoading(true);
+    setCandidateError('');
+    try {
+      const expeditionNumber = Number((nextExpeditionNumber.data ?? 0n) + 1n);
+      const response = await fetchCandidateSet(
+        account.address,
+        (message) => signMessageAsync({ message }),
+        fetch,
+        expeditionNumber,
+      );
+      const set = response.candidateSet;
+      setCandidateSet(set);
+      setShowCandidates(true);
+      setCandidateSource(response.selectedSource);
+    } catch (error) {
+      setCandidateError(error instanceof Error ? error.message : 'Could not load candidates.');
+    } finally {
+      setCandidateLoading(false);
+    }
+  }
+
+  async function chooseCandidate(candidate: IslandCandidate) {
+    if (!account.address || !candidateSet) return;
+    setCandidateLoading(true);
+    setCandidateError('');
+    let transactionSubmitted = false;
+    try {
+      await persistCandidateSetSelection(
+        account.address,
+        candidateSet.commitment,
+        candidate.source,
+        (message) => signMessageAsync({ message }),
+        fetch,
+        candidateSet.expeditionNumber,
+      );
+      if (expeditionContractAddress && publicClient) {
+        const selectedIndex = candidateSet.candidates.findIndex(
+          ({ source }) => source === candidate.source,
+        );
+        if (selectedIndex < 0) throw new Error('The chosen candidate is not in this signed set.');
+        const attestation = {
+          player: candidateSet.player,
+          expeditionNumber: BigInt(candidateSet.expeditionNumber),
+          sourceCommitment: candidateSet.sourceCommitment,
+          candidateSeeds: candidateSet.candidates.map(({ seed }) => seed) as [
+            `0x${string}`,
+            `0x${string}`,
+            `0x${string}`,
+          ],
+          combinedCharacterSeed: candidateSet.combinedCharacterSeed,
+          islandGeneratorVersion: candidateSet.islandGeneratorVersion,
+          characterGeneratorVersion: candidateSet.characterGeneratorVersion,
+          sourceSelectionPolicyVersion: candidateSet.sourceSelectionPolicyVersion,
+          issuedAt: BigInt(candidateSet.issuedAt),
+          expiresAt: BigInt(candidateSet.expiresAt),
+        };
+        setTransactionState('pending');
+        transactionSubmitted = true;
+        const hash = await writeContractAsync({
+          address: expeditionContractAddress,
+          abi: expeditionContractAbi,
+          functionName: 'startExpedition',
+          args: [attestation, selectedIndex, candidateSet.signature],
+          chainId: TARGET_CHAIN_ID,
+        });
+        await requireSuccessfulReceipt((onReplaced) =>
+          publicClient.waitForTransactionReceipt({
+            hash,
+            onReplaced: ({ reason }) => onReplaced(reason),
+          }),
+        );
+        setTransactionState('confirmed');
+        await activeExpedition.refetch();
+        setShowCandidates(false);
+        setPendingActions([]);
+        setChainCursor(0n);
+        setNotice(`${candidate.sourceName} expedition start confirmed on Hemi Sepolia.`);
+      } else {
+        setNotice(`${candidate.sourceName} candidate selected and saved for the V2 preview.`);
+      }
+      setCandidateSource(candidate.source);
+    } catch (error) {
+      setCandidateError(
+        error instanceof Error ? error.message : 'Could not save candidate selection.',
+      );
+      if (transactionSubmitted) {
+        setTransactionState('failed');
+        setNotice(transactionFailureMessage(error, 'Expedition start'));
+      }
+    } finally {
+      setCandidateLoading(false);
+    }
+  }
+
   async function startOnchainIsland() {
     if (!account.address || chainId !== TARGET_CHAIN_ID || !gameContractAddress || !publicClient)
       return;
@@ -691,16 +942,23 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
   }
 
   async function saveProgress() {
-    if (!account.address || !gameContractAddress || !publicClient || pendingActions.length === 0)
+    if (
+      !account.address ||
+      !(expeditionContractAddress || gameContractAddress) ||
+      !publicClient ||
+      pendingActions.length === 0
+    )
       return;
     setTransactionState('pending');
     const batch = pendingActions.slice(0, 20);
     try {
       const hash = await writeContractAsync({
-        address: gameContractAddress,
-        abi: gameContractAbi,
+        address: (expeditionContractAddress ?? gameContractAddress)!,
+        abi: expeditionContractAddress ? expeditionContractAbi : gameContractAbi,
         functionName: 'saveProgress',
-        args: [chainCursor, batch],
+        args: expeditionContractAddress
+          ? [activeExpedition.data!, chainCursor, batch]
+          : [chainCursor, batch],
         chainId: TARGET_CHAIN_ID,
       });
       await requireSuccessfulReceipt((onReplaced) =>
@@ -712,7 +970,11 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
       setChainCursor((cursor) => cursor + BigInt(batch.length));
       setPendingActions((actions) => actions.slice(batch.length));
       setTransactionState('confirmed');
-      void worldTree.refetch().catch(() => undefined);
+      if (expeditionContractAddress) {
+        void v2ExpeditionState.refetch().catch(() => undefined);
+        void v2ExpeditionBoard.refetch().catch(() => undefined);
+        void v2WorldTree.refetch().catch(() => undefined);
+      } else void worldTree.refetch().catch(() => undefined);
       setNotice(`Saved ${batch.length} restoration actions on Hemi Sepolia.`);
     } catch (error) {
       setTransactionState('failed');
@@ -721,7 +983,13 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
   }
 
   async function finishOnchainIsland() {
-    if (!account.address || !gameContractAddress || !publicClient || !game.complete) return;
+    if (
+      !account.address ||
+      !(expeditionContractAddress || gameContractAddress) ||
+      !publicClient ||
+      !game.complete
+    )
+      return;
     if (pendingActions.length > 20) {
       setNotice('Save the pending actions in batches of 20 or fewer before finishing.');
       return;
@@ -738,10 +1006,12 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
         ),
       );
       const hash = await writeContractAsync({
-        address: gameContractAddress,
-        abi: gameContractAbi,
-        functionName: 'finishIsland',
-        args: [chainCursor, pendingActions, snapshot],
+        address: (expeditionContractAddress ?? gameContractAddress)!,
+        abi: expeditionContractAddress ? expeditionContractAbi : gameContractAbi,
+        functionName: expeditionContractAddress ? 'finishExpedition' : 'finishIsland',
+        args: expeditionContractAddress
+          ? [activeExpedition.data!, chainCursor, pendingActions, snapshot]
+          : [chainCursor, pendingActions, snapshot],
         chainId: TARGET_CHAIN_ID,
       });
       await requireSuccessfulReceipt((onReplaced) =>
@@ -753,7 +1023,12 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
       setChainCursor((cursor) => cursor + BigInt(pendingActions.length));
       setPendingActions([]);
       setTransactionState('confirmed');
-      void worldTree.refetch().catch(() => undefined);
+      if (expeditionContractAddress) {
+        void activeExpedition.refetch().catch(() => undefined);
+        void v2WorldTree.refetch().catch(() => undefined);
+        setGame(createGameState());
+        setShowCandidates(false);
+      } else void worldTree.refetch().catch(() => undefined);
       setNotice(
         'Island completion confirmed. Your restoration added 2 points to this week’s World Tree.',
       );
@@ -763,30 +1038,20 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
     }
   }
 
-  async function buyHabitat() {
-    if (
-      game.demo ||
-      !account.address ||
-      chainId !== TARGET_CHAIN_ID ||
-      !gameContractAddress ||
-      !publicClient ||
-      pendingActions.length > 0 ||
-      transactionState === 'pending'
-    )
+  async function abandonExpedition() {
+    if (!expeditionContractAddress || !account.address || !publicClient || !activeExpedition.data)
       return;
-    const habitCode: Record<Habitat, number> = { water: 1, grass: 2, forest: 3 };
-    const price: Record<Habitat, number> = { water: 2_000, grass: 1_000, forest: 3_000 };
-    if (BigInt(price[shopHabitat]) > (goldBalance.data ?? 0n)) {
-      setNotice('There is not enough committed Gold for that habitat yet.');
-      return;
-    }
+    const confirmed = window.confirm(
+      'Abandon this expedition? Its island layout, placed habitats, remaining expedition inventory, and unsaved actions will be lost. Confirmed Gold and World Tree contributions remain in your account.',
+    );
+    if (!confirmed) return;
     setTransactionState('pending');
     try {
       const hash = await writeContractAsync({
-        address: gameContractAddress,
-        abi: gameContractAbi,
-        functionName: 'buyHabitat',
-        args: [habitCode[shopHabitat], 1],
+        address: expeditionContractAddress,
+        abi: expeditionContractAbi,
+        functionName: 'abandonExpedition',
+        args: [activeExpedition.data],
         chainId: TARGET_CHAIN_ID,
       });
       await requireSuccessfulReceipt((onReplaced) =>
@@ -795,7 +1060,91 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
           onReplaced: ({ reason }) => onReplaced(reason),
         }),
       );
-      await Promise.all([goldBalance.refetch(), chainState.refetch()]);
+      setTransactionState('confirmed');
+      setPendingActions([]);
+      setChainCursor(0n);
+      setGame(createGameState());
+      setShowCandidates(false);
+      setCandidateSet(null);
+      await activeExpedition.refetch();
+      setNotice('Abandonment confirmed. Confirmed Gold and World Tree contributions remain.');
+    } catch (error) {
+      setTransactionState('failed');
+      setNotice(transactionFailureMessage(error, 'Expedition abandonment'));
+    }
+  }
+
+  async function contributeToWorldTree() {
+    if (
+      !expeditionContractAddress ||
+      !publicClient ||
+      !activeExpedition.data ||
+      transactionState === 'pending'
+    )
+      return;
+    setTransactionState('pending');
+    try {
+      const hash = await writeContractAsync({
+        address: expeditionContractAddress,
+        abi: expeditionContractAbi,
+        functionName: 'contributeWorldTree',
+        args: [activeExpedition.data, 1],
+        chainId: TARGET_CHAIN_ID,
+      });
+      await requireSuccessfulReceipt((onReplaced) =>
+        publicClient.waitForTransactionReceipt({
+          hash,
+          onReplaced: ({ reason }) => onReplaced(reason),
+        }),
+      );
+      await v2WorldTree.refetch();
+      setTransactionState('confirmed');
+      setNotice(
+        'World Tree contribution confirmed. It remains counted if this expedition is abandoned.',
+      );
+    } catch (error) {
+      setTransactionState('failed');
+      setNotice(transactionFailureMessage(error, 'World Tree contribution'));
+    }
+  }
+
+  async function buyHabitat() {
+    if (
+      game.demo ||
+      !account.address ||
+      chainId !== TARGET_CHAIN_ID ||
+      !(expeditionContractAddress || gameContractAddress) ||
+      !publicClient ||
+      pendingActions.length > 0 ||
+      transactionState === 'pending'
+    )
+      return;
+    const habitCode: Record<Habitat, number> = { water: 1, grass: 2, forest: 3 };
+    const price: Record<Habitat, number> = { water: 2_000, grass: 1_000, forest: 3_000 };
+    if (BigInt(price[shopHabitat]) > (displayedGold ?? 0n)) {
+      setNotice('There is not enough committed Gold for that habitat yet.');
+      return;
+    }
+    setTransactionState('pending');
+    try {
+      const hash = await writeContractAsync({
+        address: expeditionContractAddress ?? gameContractAddress!,
+        abi: expeditionContractAddress ? expeditionContractAbi : gameContractAbi,
+        functionName: 'buyHabitat',
+        args: expeditionContractAddress
+          ? [activeExpedition.data!, habitCode[shopHabitat], 1]
+          : [habitCode[shopHabitat], 1],
+        chainId: TARGET_CHAIN_ID,
+      });
+      await requireSuccessfulReceipt((onReplaced) =>
+        publicClient.waitForTransactionReceipt({
+          hash,
+          onReplaced: ({ reason }) => onReplaced(reason),
+        }),
+      );
+      if (expeditionContractAddress)
+        await Promise.all([v2GoldBalance.refetch(), v2ExpeditionBoard.refetch()]);
+      else await Promise.all([goldBalance.refetch(), chainState.refetch()]);
       setTransactionState('confirmed');
       setNotice(
         `${shopHabitat} added to your pouch for ${price[shopHabitat].toLocaleString()} Gold.`,
@@ -942,11 +1291,13 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
                       ? `${pendingActions.length} unsaved`
                       : 'Progress synced'}
             </span>
-            {!game.demo && gameContractAddress && account.isConnected && (
-              <strong className="compact-gold">
-                {Number(goldBalance.data ?? 0n).toLocaleString()} G
-              </strong>
-            )}
+            {!game.demo &&
+              (expeditionContractAddress || gameContractAddress) &&
+              account.isConnected && (
+                <strong className="compact-gold">
+                  {Number(displayedGold ?? 0n).toLocaleString()} G
+                </strong>
+              )}
           </div>
           <button
             className="details-toggle"
@@ -960,8 +1311,46 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
 
         <section className="game-layout" aria-label="Island restoration game">
           <div className="board-column">
+            {account.isConnected && chainId === TARGET_CHAIN_ID && game.demo && (
+              <div className="chain-action-card">
+                <div>
+                  <strong>Preview blockchain-derived islands</strong>
+                  <small>
+                    Uses Ethereum Sepolia, Hemi Sepolia, and Bitcoin Testnet4 source transactions.
+                  </small>
+                </div>
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={loadCandidates}
+                  disabled={candidateLoading}
+                >
+                  {candidateLoading
+                    ? 'Requesting wallet signature…'
+                    : showCandidates
+                      ? 'Refresh preview'
+                      : 'Show candidates'}{' '}
+                  <span>→</span>
+                </button>
+              </div>
+            )}
+            {candidateError && (
+              <p className="candidate-error" role="alert">
+                Candidate request failed: {candidateError}
+              </p>
+            )}
+            {showCandidates && candidateSet && (
+              <CandidatePreviews
+                candidateSet={candidateSet}
+                onSelect={chooseCandidate}
+                selectedSource={candidateSource}
+                busy={candidateLoading}
+                contractReady={Boolean(expeditionContractAddress)}
+              />
+            )}
             {game.demo &&
               account.isConnected &&
+              !expeditionContractAddress &&
               gameContractAddress &&
               chainId === TARGET_CHAIN_ID && (
                 <div className="chain-action-card">
@@ -988,16 +1377,19 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
                   </button>
                 </div>
               )}
-            {game.demo && account.isConnected && !gameContractAddress && (
-              <div className="chain-action-card">
-                <div>
-                  <strong>Contract address not configured</strong>
-                  <small>
-                    Set VITE_WORLDSEED_CONTRACT_ADDRESS after deploying the Hemi Sepolia contract.
-                  </small>
+            {game.demo &&
+              account.isConnected &&
+              !gameContractAddress &&
+              !expeditionContractAddress && (
+                <div className="chain-action-card">
+                  <div>
+                    <strong>Contract address not configured</strong>
+                    <small>
+                      Set VITE_WORLDSEED_CONTRACT_ADDRESS after deploying the Hemi Sepolia contract.
+                    </small>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
             <div className="board-heading">
               <div>
                 <div className="island-kicker">
@@ -1166,6 +1558,29 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
                       ></span>
                     ))}
                   </div>
+                  <div className="scene-landmarks" aria-hidden="true">
+                    <span
+                      className="scene-landmark scene-landmark--shrine"
+                      style={{ left: '35.7%', top: '78.6%' }}
+                    >
+                      <i>✧</i>
+                      <b>Shrine</b>
+                    </span>
+                    <span
+                      className="scene-landmark scene-landmark--merchant"
+                      style={{ left: '78.6%', top: '7.1%' }}
+                    >
+                      <i>♟</i>
+                      <b>Merchant</b>
+                    </span>
+                    <span
+                      className="scene-landmark scene-landmark--tree"
+                      style={{ left: '7.1%', top: '64.3%' }}
+                    >
+                      <i>✣</i>
+                      <b>World Tree</b>
+                    </span>
+                  </div>
                   {sceneEvent && (
                     <div className={`scene-event scene-event--${sceneEvent}`} aria-live="polite">
                       <span>{sceneEvent === 'complete' ? '✦' : '✧'}</span>
@@ -1306,6 +1721,16 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
                       Finish island <span>→</span>
                     </button>
                   )}
+                  {expeditionContractAddress && activeExpedition.data && (
+                    <button
+                      className="tool-button"
+                      type="button"
+                      onClick={() => void abandonExpedition()}
+                      disabled={transactionState === 'pending'}
+                    >
+                      Abandon expedition
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -1373,48 +1798,50 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
                     </div>
                   </section>
 
-                  {!game.demo && account.isConnected && gameContractAddress && (
-                    <section className="panel-card shop-card" aria-label="Grove keeper shop">
-                      <div className="card-heading">
-                        <div>
-                          <div className="card-kicker">GROVE KEEPER</div>
-                          <h3>Habitat supplies</h3>
+                  {!game.demo &&
+                    account.isConnected &&
+                    (expeditionContractAddress || gameContractAddress) && (
+                      <section className="panel-card shop-card" aria-label="Grove keeper shop">
+                        <div className="card-heading">
+                          <div>
+                            <div className="card-kicker">GROVE KEEPER</div>
+                            <h3>Habitat supplies</h3>
+                          </div>
+                          <strong className="shop-gold">
+                            {Number(displayedGold ?? 0n).toLocaleString()} G
+                          </strong>
                         </div>
-                        <strong className="shop-gold">
-                          {Number(goldBalance.data ?? 0n).toLocaleString()} G
-                        </strong>
-                      </div>
-                      <label className="shop-choice">
-                        <span>Choose a habitat</span>
-                        <select
-                          value={shopHabitat}
-                          onChange={(event) => setShopHabitat(event.target.value as Habitat)}
+                        <label className="shop-choice">
+                          <span>Choose a habitat</span>
+                          <select
+                            value={shopHabitat}
+                            onChange={(event) => setShopHabitat(event.target.value as Habitat)}
+                          >
+                            <option value="water">Water · 2,000 Gold</option>
+                            <option value="grass">Grass · 1,000 Gold</option>
+                            <option value="forest">Forest · 3,000 Gold</option>
+                          </select>
+                        </label>
+                        <button
+                          className="secondary-button shop-buy-button"
+                          type="button"
+                          onClick={() => void buyHabitat()}
+                          disabled={
+                            chainId !== TARGET_CHAIN_ID ||
+                            pendingActions.length > 0 ||
+                            transactionState === 'pending'
+                          }
                         >
-                          <option value="water">Water · 2,000 Gold</option>
-                          <option value="grass">Grass · 1,000 Gold</option>
-                          <option value="forest">Forest · 3,000 Gold</option>
-                        </select>
-                      </label>
-                      <button
-                        className="secondary-button shop-buy-button"
-                        type="button"
-                        onClick={() => void buyHabitat()}
-                        disabled={
-                          chainId !== TARGET_CHAIN_ID ||
-                          pendingActions.length > 0 ||
-                          transactionState === 'pending'
-                        }
-                      >
-                        {pendingActions.length > 0
-                          ? 'Save island progress first'
-                          : 'Buy one habitat'}
-                      </button>
-                      <small className="shop-note">
-                        Purchases atomically spend verified Gold and add onchain inventory. Prices
-                        are provisional.
-                      </small>
-                    </section>
-                  )}
+                          {pendingActions.length > 0
+                            ? 'Save island progress first'
+                            : 'Buy one habitat'}
+                        </button>
+                        <small className="shop-note">
+                          Purchases atomically spend verified Gold and add onchain inventory. Prices
+                          are provisional.
+                        </small>
+                      </section>
+                    )}
 
                   <section className="panel-card progress-card">
                     <div className="card-heading">
@@ -1575,10 +2002,12 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
             <div className="card-kicker">A FRIEND ON THE ROAD</div>
             <h2 id="merchant-title">The Traveling Merchant</h2>
             <p>Trade verified Gold for habitat supplies to help your onchain island grow.</p>
-            {!game.demo && account.isConnected && gameContractAddress ? (
+            {!game.demo &&
+            account.isConnected &&
+            (expeditionContractAddress || gameContractAddress) ? (
               <>
                 <div className="merchant-balance">
-                  Your pouch · {Number(goldBalance.data ?? 0n).toLocaleString()} Gold
+                  Your pouch · {Number(displayedGold ?? 0n).toLocaleString()} Gold
                 </div>
                 <label className="shop-choice">
                   <span>Choose a habitat</span>
@@ -1673,6 +2102,16 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
                 ? 'Community total from confirmed Hemi Sepolia contributions.'
                 : 'Preview tree · community progress appears when the Hemi Sepolia contract is configured.'}
             </p>
+            {expeditionContractAddress && activeExpedition.data && account.isConnected && (
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => void contributeToWorldTree()}
+                disabled={transactionState === 'pending'}
+              >
+                {transactionState === 'pending' ? 'Confirming…' : 'Contribute one point'}
+              </button>
+            )}
           </section>
         </div>
       )}

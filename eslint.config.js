@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default [
-  { ignores: ['dist', 'node_modules', 'coverage', 'artifacts', 'cache'] },
+  { ignores: ['dist', 'node_modules', 'coverage', 'artifacts', 'cache', '.wrangler/**'] },
   { languageOptions: { globals: { console: 'readonly' } } },
   js.configs.recommended,
   {
@@ -15,6 +15,7 @@ export default [
       parserOptions: { ecmaFeatures: { jsx: true }, sourceType: 'module' },
       globals: {
         console: 'readonly',
+        AbortSignal: 'readonly',
         BeforeUnloadEvent: 'readonly',
         HTMLDivElement: 'readonly',
         HTMLCanvasElement: 'readonly',
@@ -27,6 +28,14 @@ export default [
         localStorage: 'readonly',
         indexedDB: 'readonly',
         IDBDatabase: 'readonly',
+        fetch: 'readonly',
+        Request: 'readonly',
+        RequestInfo: 'readonly',
+        RequestInit: 'readonly',
+        Response: 'readonly',
+        Storage: 'readonly',
+        URL: 'readonly',
+        crypto: 'readonly',
       },
     },
     plugins: {

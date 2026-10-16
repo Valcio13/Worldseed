@@ -3,7 +3,7 @@ import { cosmeticTileVariant, terrainLayerForCell } from './terrainArt';
 
 describe('pixel terrain rendering metadata', () => {
   it('maps damaged ground, shoreline, habitats, and the heart to readable art layers', () => {
-    expect(terrainLayerForCell('meadow', null)).toBe('grass');
+    expect(terrainLayerForCell('meadow', null)).toBe('damaged');
     expect(terrainLayerForCell('shore', null)).toBe('water');
     expect(terrainLayerForCell('rock', null)).toBe('damaged');
     expect(terrainLayerForCell('meadow', 'water')).toBe('water');

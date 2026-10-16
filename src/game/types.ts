@@ -25,7 +25,7 @@ export interface Cell {
 
 export interface Island {
   seed: string;
-  generatorVersion: typeof GENERATOR_VERSION;
+  generatorVersion: typeof GENERATOR_VERSION | 2;
   cells: Cell[];
   heartIndex: number;
 }

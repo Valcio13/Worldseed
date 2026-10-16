@@ -2,15 +2,16 @@
 
 ## Current testnet deployment
 
-| Setting  | Value                                                                                  |
-| -------- | -------------------------------------------------------------------------------------- |
-| Network  | Hemi Sepolia                                                                           |
-| Chain ID | `743111`                                                                               |
-| Contract | `0x133B0fDbaC7D6535C68Be5945d15C328F3d371E4`                                           |
-| Explorer | <https://testnet.explorer.hemi.xyz/address/0x133B0fDbaC7D6535C68Be5945d15C328F3d371E4> |
-| Sourcify | <https://repo.sourcify.dev/743111/0x133B0fDbaC7D6535C68Be5945d15C328F3d371E4>          |
+| Setting                | Value                                                                                  |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| Network                | Hemi Sepolia                                                                           |
+| Chain ID               | `743111`                                                                               |
+| Contract               | `0x7695494E1BB9f0696A52564BF15AA244819a882A`                                           |
+| Explorer               | <https://testnet.explorer.hemi.xyz/address/0x7695494E1BB9f0696A52564BF15AA244819a882A> |
+| Deployment transaction | `0x457ff7e168468e2a6d34fd2688f1be6292d21e52ff36f0439b888c4f886d36f0`                   |
+| Attester               | `0x8E2F2FEB6dCfBD6FBA3DC4F0c17e406941806D9B`                                           |
 
-The source was submitted through Sourcify's documented API and returned exact creation and runtime matches. No contract deployment is required for staging. Do not use Hemi Mainnet for this milestone.
+The V2 deployment receipt and role reads are recorded above. Public source verification for this V2 address is a separate pending step; do not treat matching local bytecode as equivalent to explorer verification. The V1 reference has its own historical verification record. Do not use Hemi Mainnet for this milestone.
 
 ## Local development and production preview
 
@@ -32,18 +33,18 @@ Cloudflare Pages is the selected simple static host. It serves the built files a
 
 - Build command: `npm run build`
 - Build output directory: `dist`
-- Production build variable: `VITE_WORLDSEED_CONTRACT_ADDRESS=0x133B0fDbaC7D6535C68Be5945d15C328F3d371E4`
+- Production build variable: `VITE_WORLDSEED_V2_CONTRACT_ADDRESS=0x7695494E1BB9f0696A52564BF15AA244819a882A`
 - Node.js version: `22`
 
 Cloudflare Pages treats a project without a top-level `404.html` as a single-page application and serves `index.html` for unmatched navigation paths. This project has no `404.html`, so no wildcard rewrite is needed. The app currently navigates its game screens in client state rather than through URL routes. Keep the Vite base path at `/` when using a project root or `*.pages.dev` origin.
 
-`VITE_WORLDSEED_CONTRACT_ADDRESS` is public and is embedded in browser assets at build time. No RPC credential or private key is required by the frontend. Do not define `HEMI_SEPOLIA_PRIVATE_KEY`, `HEMI_MAINNET_PRIVATE_KEY`, or any other secret in the Pages build environment. Hosting authorization and account credentials are required to publish; none are configured here, so no preview URL has been created.
+`VITE_WORLDSEED_V2_CONTRACT_ADDRESS` is public and is embedded in browser assets at build time. No RPC credential or private key is required by the frontend. Do not define `HEMI_SEPOLIA_PRIVATE_KEY`, `HEMI_MAINNET_PRIVATE_KEY`, or any other secret in the Pages build environment. Hosting authorization and account credentials are required to publish; none are configured here, so no preview URL has been created. `VITE_WORLDSEED_CONTRACT_ADDRESS` remains the separate V1 reference setting.
 
 After publishing, verify the HTTPS origin loads, open the app and the 2048 screen, refresh both screens, and confirm there are no failed dynamic asset requests. Connect a disposable wallet only after confirming it is set to Hemi Sepolia.
 
 ## Hemi Sepolia contract deployment (reference only)
 
-The existing contract is already deployed; do not run this procedure for staging. For a future explicitly authorized testnet deployment, first set `HEMI_SEPOLIA_RPC_URL` and `HEMI_SEPOLIA_PRIVATE_KEY` in the deployment shell through a local secret manager, confirm chain ID `743111` and deployer funding, then run:
+The reviewed V2 contract is already deployed; do not run this procedure again for staging. For a future explicitly authorized testnet deployment, first set `HEMI_SEPOLIA_RPC_URL` and `HEMI_SEPOLIA_PRIVATE_KEY` in the deployment shell through a local secret manager, confirm chain ID `743111` and deployer funding, then run:
 
 ```powershell
 npm run contract:compile
@@ -52,6 +53,77 @@ npm run contract:deploy:testnet
 ```
 
 Never put private keys in `VITE_*` variables, source files, shell transcripts, frontend hosting settings, or version control. Do not paste a key or seed phrase into chat. Mainnet variables are reserved and unused; this repository does not authorize a Mainnet deployment.
+
+## V2 deployment preparation checklist
+
+This is a preparation checklist only. It does not authorize deployment.
+
+### Wallets and RPC
+
+- [ ] Choose a funded disposable **owner** wallet for administrative actions.
+- [ ] Choose a separate funded disposable **attester** wallet for candidate signatures.
+- [ ] Confirm both addresses and confirm `owner != attester`.
+- [ ] Set `HEMI_SEPOLIA_RPC_URL` to an Hemi Sepolia RPC and verify `eth_chainId` is `0xB5B07` (`743111`).
+- [ ] Fund the owner with enough Hemi Sepolia test ETH for deployment and one verification transaction. Keep the attester funded only if it will submit onchain transactions.
+
+Required deployment-shell variables (set through a local secret manager or session-only environment):
+
+```text
+HEMI_SEPOLIA_RPC_URL=<Hemi Sepolia RPC URL>
+HEMI_SEPOLIA_PRIVATE_KEY=<owner/deployer key; never commit or print>
+HEMI_V2_OWNER_ADDRESS=<owner address>
+WORLDSEED_ATTESTER_ADDRESS=<attester address>
+```
+
+Run the guarded procedure only after the preflight review:
+
+```powershell
+npm ci
+npm run contract:compile
+npm run contract:test
+npm run contract:deploy:v2:testnet
+```
+
+Record the printed V2 address, deployment transaction, block, receipt status, and gas. Read the deployed `attester()` and compare it to `WORLDSEED_ATTESTER_ADDRESS`. Do not reuse the V1 address for V2 configuration.
+
+### Remote D1 and Pages Functions
+
+Identify the intended production D1 database first. If it does not exist, create it once, then apply migrations from the repository:
+
+```powershell
+npx wrangler d1 list
+npx wrangler d1 create worldseed-h2
+# Only if the list shows no intended database. Copy the returned database_id into wrangler.toml.
+# Do not commit credentials or a placeholder ID.
+npx wrangler d1 migrations apply worldseed-h2 --remote
+```
+
+In the Cloudflare Pages project, bind that database as `WORLDSEED_DB`. Configure these **server-side** variables and secrets:
+
+```text
+ETHEREUM_SEPOLIA_RPC_URL=<Ethereum Sepolia RPC>
+HEMI_SEPOLIA_RPC_URL=<Hemi Sepolia RPC>
+BITCOIN_TESTNET4_API_URL=https://mempool.space/testnet4/api
+WORLDSEED_V2_CONTRACT_ADDRESS=0x7695494E1BB9f0696A52564BF15AA244819a882A
+WORLDSEED_V2_ATTESTER_ADDRESS=0x8E2F2FEB6dCfBD6FBA3DC4F0c17e406941806D9B
+WORLDSEED_ATTESTATION_PRIVATE_KEY=<attester key as a Pages secret>
+```
+
+Set `WORLDSEED_ATTESTATION_PRIVATE_KEY` with `wrangler pages secret put` or the Pages dashboard secret UI. Never put it in a `VITE_*` variable. The candidate function fails closed if the derived signer does not match the configured attester address.
+
+After configuring Pages, build with the public browser variable only:
+
+```text
+VITE_WORLDSEED_V2_CONTRACT_ADDRESS=0x7695494E1BB9f0696A52564BF15AA244819a882A
+```
+
+Then verify the deployed address, chain ID, attester address, D1 binding, and a fresh candidate issuance before allowing a connected-wallet test. Source verification can be attempted with the officially supported explorer/Sourcify route after deployment; matching local bytecode alone is not public source verification.
+
+### Rollback and blockers
+
+If deployment or attester configuration fails, stop issuance, remove the Pages secret/binding, and leave the existing V1 and V2 testnet contracts untouched. Do not redeploy to Mainnet. A new V2 deployment requires a new address propagation and a fresh D1/service configuration review.
+
+Current blockers remain connected-browser testing, Hemi Sepolia gas measurements for every V2 write path, and a hosted HTTPS build verification. No deployment or Pages authorization is assumed by this document.
 
 ## Clean-wallet manual QA
 

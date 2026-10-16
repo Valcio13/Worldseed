@@ -11,6 +11,8 @@ import {
 import {
   gameContractAbi,
   gameContractAddress,
+  expeditionContractAddress,
+  expeditionContractAbi,
   TARGET_CHAIN_ID,
   TARGET_CHAIN_NAME,
 } from '../blockchain/config';
@@ -23,15 +25,22 @@ import {
   applyPuzzleMove,
   CASH_OUT_AFTER,
   createPuzzleRound,
-  directionFromCode,
   DIRECTION_CODES,
   MAX_SAVED_MOVES,
   MAX_ROUND_MOVES,
   MODES,
+  tileFontSizeCqw,
   type Direction,
   type PuzzleMode,
   type PuzzleState,
 } from '../puzzle/engine';
+import {
+  commitCheckpointAfterSuccess,
+  isCheckpointFull,
+  queueCheckpointMove,
+  restoreCheckpointMoves,
+  type PendingCheckpoint,
+} from '../puzzle/checkpoint';
 
 const MODE_ORDER: PuzzleMode[] = ['relaxed', 'standard', 'challenging'];
 const MODE_CODE: Record<PuzzleMode, number> = { relaxed: 0, standard: 1, challenging: 2 };
@@ -40,12 +49,6 @@ const PRACTICE_KEY = 'worldseed:2048:practice:v1';
 
 interface StoredPractice {
   state: PuzzleState;
-}
-
-interface StoredPending {
-  seed: string;
-  cursor: number;
-  directions: number[];
 }
 
 function pendingKey(address: string) {
@@ -83,27 +86,59 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
   const { switchChainAsync, isPending: switching } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient({ chainId: TARGET_CHAIN_ID });
-  const chainPuzzle = useReadContract({
+  const activeExpedition = useReadContract({
+    address: expeditionContractAddress,
+    abi: expeditionContractAbi,
+    functionName: 'activeExpeditionId',
+    args: account.address ? [account.address] : undefined,
+    query: { enabled: Boolean(expeditionContractAddress && account.address) },
+  });
+  const usingV2 = Boolean(expeditionContractAddress && (activeExpedition.data ?? 0n) > 0n);
+  const v1Puzzle = useReadContract({
     address: gameContractAddress,
     abi: gameContractAbi,
     functionName: 'puzzleState',
     args: account.address ? [account.address] : undefined,
-    query: { enabled: Boolean(gameContractAddress && account.address) },
+    query: { enabled: Boolean(!usingV2 && gameContractAddress && account.address) },
   });
-  const staminaQuery = useReadContract({
+  const v2Puzzle = useReadContract({
+    address: expeditionContractAddress,
+    abi: expeditionContractAbi,
+    functionName: 'puzzleState',
+    args: account.address ? [account.address] : undefined,
+    query: { enabled: Boolean(usingV2 && account.address) },
+  });
+  const v1Stamina = useReadContract({
     address: gameContractAddress,
     abi: gameContractAbi,
     functionName: 'staminaState',
     args: account.address ? [account.address] : undefined,
-    query: { enabled: Boolean(gameContractAddress && account.address) },
+    query: { enabled: Boolean(!usingV2 && gameContractAddress && account.address) },
   });
-  const goldQuery = useReadContract({
+  const v2Stamina = useReadContract({
+    address: expeditionContractAddress,
+    abi: expeditionContractAbi,
+    functionName: 'staminaState',
+    args: account.address ? [account.address] : undefined,
+    query: { enabled: Boolean(usingV2 && account.address) },
+  });
+  const v1Gold = useReadContract({
     address: gameContractAddress,
     abi: gameContractAbi,
     functionName: 'goldBalances',
     args: account.address ? [account.address] : undefined,
-    query: { enabled: Boolean(gameContractAddress && account.address) },
+    query: { enabled: Boolean(!usingV2 && gameContractAddress && account.address) },
   });
+  const v2Gold = useReadContract({
+    address: expeditionContractAddress,
+    abi: expeditionContractAbi,
+    functionName: 'goldBalances',
+    args: account.address ? [account.address] : undefined,
+    query: { enabled: Boolean(usingV2 && account.address) },
+  });
+  const chainPuzzle = usingV2 ? v2Puzzle : v1Puzzle;
+  const staminaQuery = usingV2 ? v2Stamina : v1Stamina;
+  const goldQuery = usingV2 ? v2Gold : v1Gold;
 
   const [initialPractice] = useState(loadPractice);
   const [playType, setPlayType] = useState<'practice' | 'rewarded'>('practice');
@@ -121,7 +156,7 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
   const [spawnedIndex, setSpawnedIndex] = useState<number | undefined>();
   const touchStart = useRef<{ x: number; y: number } | undefined>(undefined);
   const walletReady = Boolean(
-    account.address && chainId === TARGET_CHAIN_ID && gameContractAddress,
+    account.address && chainId === TARGET_CHAIN_ID && (usingV2 || gameContractAddress),
   );
   const hasActiveChainRound = Boolean(chainPuzzle.data?.[0]);
   const currentMode = game?.mode ?? mode;
@@ -141,7 +176,8 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     if (playType !== 'rewarded' || !account.address || !chainPuzzle.data) return;
-    const [active, modeCode, moves, score, seed, rngState, board] = chainPuzzle.data;
+    const [active, modeCode, moves, score, seed, rngState] = chainPuzzle.data;
+    const board = (usingV2 ? chainPuzzle.data[7] : chainPuzzle.data[6]) as readonly number[];
     if (!seed) {
       const timer = window.setTimeout(() => {
         setGame(null);
@@ -164,21 +200,10 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
     try {
       const saved = JSON.parse(
         localStorage.getItem(pendingKey(account.address)) ?? 'null',
-      ) as StoredPending | null;
-      if (
-        saved?.seed === String(seed) &&
-        saved.cursor === moves &&
-        Array.isArray(saved.directions)
-      ) {
-        for (const code of saved.directions) {
-          const direction = directionFromCode(code);
-          if (!direction || queued.length >= MAX_SAVED_MOVES) break;
-          const next = applyPuzzleMove(restored, direction);
-          if (!next.valid) break;
-          Object.assign(restored, next.state);
-          queued.push(code);
-        }
-      }
+      ) as PendingCheckpoint | null;
+      const recovered = restoreCheckpointMoves(restored, saved);
+      Object.assign(restored, recovered.state);
+      queued = recovered.directions;
     } catch {
       // The confirmed onchain board remains recoverable if local pending data is damaged.
     }
@@ -196,7 +221,7 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
       );
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [playType, account.address, chainPuzzle.data]);
+  }, [playType, account.address, chainPuzzle.data, usingV2]);
 
   useEffect(() => {
     if (playType !== 'rewarded' || !account.address || !game) return;
@@ -207,7 +232,7 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
           seed: String(game.seed),
           cursor: confirmedMoves,
           directions: pendingDirections,
-        } satisfies StoredPending),
+        } satisfies PendingCheckpoint),
       );
     } catch {
       console.warn('Could not save the pending 2048 move queue.');
@@ -216,7 +241,7 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
 
   function move(direction: Direction) {
     if (!game || game.over || txState === 'pending') return;
-    if (playType === 'rewarded' && pendingDirections.length >= MAX_SAVED_MOVES) {
+    if (playType === 'rewarded' && isCheckpointFull(pendingDirections)) {
       setNotice('Save these 20 moves onchain before continuing your rewarded round.');
       return;
     }
@@ -240,7 +265,9 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
             : 'A new tile sprouted.',
     );
     if (playType === 'rewarded') {
-      setPendingDirections((directions) => [...directions, DIRECTION_CODES[direction]]);
+      setPendingDirections(
+        (directions) => queueCheckpointMove(directions, DIRECTION_CODES[direction]) ?? directions,
+      );
     }
     window.setTimeout(() => setSpawnedIndex(undefined), 250);
     if (result.scoreIncrease) window.setTimeout(() => setScorePulse(0), 650);
@@ -294,26 +321,49 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
 
   async function startRewardedRound() {
     if (!walletReady || !publicClient || hasActiveChainRound) return;
+    const targetAddress = usingV2 ? expeditionContractAddress! : gameContractAddress!;
     setTxState('pending');
     try {
-      const args = [MODE_CODE[mode]] as const;
-      const gas = withGasSafetyMargin(
-        await publicClient.estimateContractGas({
-          address: gameContractAddress!,
+      let hash: `0x${string}`;
+      if (usingV2) {
+        const args = [activeExpedition.data!, MODE_CODE[mode]] as const;
+        const gas = withGasSafetyMargin(
+          await publicClient.estimateContractGas({
+            address: targetAddress,
+            abi: expeditionContractAbi,
+            functionName: 'startPuzzleRound',
+            args,
+            account: account.address!,
+          }),
+        );
+        hash = await writeContractAsync({
+          address: targetAddress,
+          abi: expeditionContractAbi,
+          functionName: 'startPuzzleRound',
+          args,
+          gas,
+          chainId: TARGET_CHAIN_ID,
+        });
+      } else {
+        const args = [MODE_CODE[mode]] as const;
+        const gas = withGasSafetyMargin(
+          await publicClient.estimateContractGas({
+            address: targetAddress,
+            abi: gameContractAbi,
+            functionName: 'startPuzzleRound',
+            args,
+            account: account.address!,
+          }),
+        );
+        hash = await writeContractAsync({
+          address: targetAddress,
           abi: gameContractAbi,
           functionName: 'startPuzzleRound',
           args,
-          account: account.address!,
-        }),
-      );
-      const hash = await writeContractAsync({
-        address: gameContractAddress!,
-        abi: gameContractAbi,
-        functionName: 'startPuzzleRound',
-        args,
-        gas,
-        chainId: TARGET_CHAIN_ID,
-      });
+          gas,
+          chainId: TARGET_CHAIN_ID,
+        });
+      }
       await requireSuccessfulReceipt((onReplaced) =>
         publicClient.waitForTransactionReceipt({
           hash,
@@ -340,20 +390,28 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
     const batch = pendingDirections.slice(0, MAX_SAVED_MOVES);
     setTxState('pending');
     try {
+      const targetAddress = usingV2 ? expeditionContractAddress! : gameContractAddress!;
       const hash = await writeContractAsync({
-        address: gameContractAddress!,
-        abi: gameContractAbi,
+        address: targetAddress,
+        abi: usingV2 ? expeditionContractAbi : gameContractAbi,
         functionName: 'savePuzzleMoves',
         args: [confirmedMoves, batch, cashOut],
         chainId: TARGET_CHAIN_ID,
       });
-      await requireSuccessfulReceipt((onReplaced) =>
-        publicClient.waitForTransactionReceipt({
-          hash,
-          onReplaced: ({ reason }) => onReplaced(reason),
-        }),
+      const committed = await commitCheckpointAfterSuccess(
+        confirmedMoves,
+        pendingDirections,
+        batch.length,
+        () =>
+          requireSuccessfulReceipt((onReplaced) =>
+            publicClient.waitForTransactionReceipt({
+              hash,
+              onReplaced: ({ reason }) => onReplaced(reason),
+            }),
+          ),
       );
-      setPendingDirections((directions) => directions.slice(batch.length));
+      setConfirmedMoves(committed.confirmedMoves);
+      setPendingDirections(committed.pending);
       await Promise.all([chainPuzzle.refetch(), goldQuery.refetch(), staminaQuery.refetch()]);
       setTxState('idle');
       setNotice(
@@ -476,6 +534,9 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
               {(game?.board ?? Array(16).fill(0)).map((tile, index) => (
                 <div
                   className={`puzzle-tile puzzle-tile--${Math.min(tile, 11)} ${tile && spawnedIndex === index ? 'puzzle-tile--spawned' : ''}`}
+                  style={{
+                    fontSize: `clamp(10px, ${tileFontSizeCqw(tile)}cqw, 34px)`,
+                  }}
                   role="gridcell"
                   aria-label={tile ? `${2 ** tile}` : 'empty'}
                   key={index}
@@ -599,13 +660,18 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
                   <strong>Active round resumed</strong>
                   {pendingDirections.length > 0 && (
                     <button
-                      className="secondary-button"
+                      className={
+                        pendingDirections.length >= MAX_SAVED_MOVES
+                          ? 'primary-button puzzle-action'
+                          : 'secondary-button'
+                      }
                       type="button"
                       onClick={() => void saveRewardedMoves(false)}
                       disabled={txState === 'pending'}
                     >
-                      Save {pendingDirections.length} move
-                      {pendingDirections.length === 1 ? '' : 's'}
+                      {pendingDirections.length >= MAX_SAVED_MOVES
+                        ? 'Save checkpoint to continue'
+                        : `Save ${pendingDirections.length} move${pendingDirections.length === 1 ? '' : 's'}`}
                     </button>
                   )}
                   {game?.over && (
@@ -627,11 +693,6 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
                     >
                       Cash out for Gold
                     </button>
-                  )}
-                  {!game?.over && pendingDirections.length >= MAX_SAVED_MOVES && (
-                    <p className="puzzle-save-hint">
-                      Save this 20 move checkpoint to keep playing.
-                    </p>
                   )}
                 </>
               ) : (

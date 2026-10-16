@@ -5,10 +5,17 @@ import {
   createPuzzleRound,
   isPuzzleOver,
   MODES,
+  tileFontSizeCqw,
   type PuzzleState,
 } from './engine';
 
 describe('2048 puzzle engine', () => {
+  it('scales labels for large tiles without changing their cell dimensions', () => {
+    expect([1, 4, 7, 10, 11, 12, 20].map(tileFontSizeCqw)).toEqual([
+      7, 3.5, 2.5, 2.5, 2.5, 2.5, 2.5,
+    ]);
+  });
+
   it('merges equal tiles once per move and awards the merged tile value', () => {
     const round = createPuzzleRound(123, 'standard');
     round.board = [1, 1, 1, 1, ...Array(12).fill(0)];

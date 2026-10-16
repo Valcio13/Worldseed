@@ -81,10 +81,18 @@ function drawCell(
     drawTree(context, x + 1, y + 2, variant);
     if (variant % 3 !== 0) drawTree(context, x + 8, y + 5, variant + 1);
   } else if (layer === 'damaged') {
+    // Cracked soil and a sparse dead sprig make the unoccupied island read as
+    // recoverable damage. Placed habitats switch to the living palettes above.
     pixel(context, x + 3, y + 4, '#c9aa78', 3, 2);
+    pixel(context, x + 5, y + 6, '#887653', 1, 3);
     pixel(context, x + 10, y + 9, '#887653', 2, 1);
+    pixel(context, x + 9, y + 10, '#887653', 1, 2);
     pixel(context, x + 6, y + 12, '#d5b780', 2, 1);
-    if (variant === 0) pixel(context, x + 12, y + 3, '#759a5e', 1, 2);
+    if (variant !== 1) {
+      pixel(context, x + 12, y + 4, '#71805a', 1, 4);
+      pixel(context, x + 11, y + 3, '#89906a', 2, 1);
+      pixel(context, x + 12, y + 2, '#89906a', 1, 1);
+    }
   } else if (cell.terrain === 'heart') {
     drawHeartTree(context, x, y, complete);
   } else if (cell.habitat === 'grass') {

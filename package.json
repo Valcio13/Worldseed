@@ -13,11 +13,9 @@
     "format:check": "prettier --check .",
     "test": "vitest run src",
     "test:watch": "vitest",
-    "verify:sources": "tsx scripts/verify-source-adapters.ts",
     "contract:compile": "hardhat compile --build-profile production",
     "contract:test": "hardhat test --build-profile production",
-    "contract:deploy:testnet": "hardhat run scripts/deploy-testnet.ts --network hemiSepolia --build-profile production",
-    "contract:deploy:v2:testnet": "node --env-file=.env node_modules/hardhat/dist/src/cli.js run scripts/deploy-v2-testnet.ts --network hemiSepolia --build-profile production"
+    "contract:deploy:testnet": "hardhat run scripts/deploy-testnet.ts --network hemiSepolia --build-profile production"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.2",
@@ -47,7 +45,6 @@
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",
     "typescript": "latest",
-    "vitest": "latest",
-    "wrangler": "^4.151.0"
+    "vitest": "latest"
   }
 }

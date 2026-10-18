@@ -1,14 +1,3 @@
-name = "worldseed-h2-candidates"
+name = "worldseed"
 compatibility_date = "2026-10-14"
-main = "src/worker.ts"
-
-[assets]
-directory = "./dist"
-binding = "ASSETS"
-not_found_handling = "single-page-application"
-
-[[d1_databases]]
-binding = "WORLDSEED_DB"
-database_name = "worldseed-h2"
-database_id = "replace-with-created-d1-database-id"
-migrations_dir = "db/migrations"
+pages_build_output_dir = "./dist"

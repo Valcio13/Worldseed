@@ -1,5 +1,3 @@
-import { keccak256, stringToHex } from 'viem';
-
 export type CharacterKind = 'animal' | 'villager' | 'spirit';
 
 export interface CharacterDefinition {
@@ -60,20 +58,3 @@ export const CHARACTER_REGISTRY: readonly CharacterDefinition[] = [
     home: { x: 4, y: 4 },
   },
 ];
-
-/** Stable roster order for a selected ETH + HEMI + BTC candidate set. */
-export function characterRosterOrder(
-  sourceHashes: readonly string[],
-  selectedSeed: string,
-): string[] {
-  const entropy = keccak256(
-    stringToHex(`worldseed:characters:v1:${sourceHashes.join('|')}:${selectedSeed}`),
-  );
-  return [...CHARACTER_REGISTRY]
-    .sort((left, right) => {
-      const leftKey = keccak256(stringToHex(`${entropy}:${left.id}`));
-      const rightKey = keccak256(stringToHex(`${entropy}:${right.id}`));
-      return leftKey.localeCompare(rightKey);
-    })
-    .map((character) => character.id);
-}

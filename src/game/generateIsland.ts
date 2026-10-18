@@ -6,7 +6,6 @@ import {
   type Island,
   type RegionId,
 } from './types';
-import { keccak256, stringToHex } from 'viem';
 
 const regionAt = (x: number): RegionId => {
   if (x <= 1) return 'clearing';
@@ -92,52 +91,6 @@ export function generateIsland(seed: string): Island {
   }
 
   return { seed, generatorVersion: GENERATOR_VERSION, cells, heartIndex };
-}
-
-/**
- * Candidate-preview generator for H2/V2. It changes only natural terrain
- * appearance; legal cells, regions, and the existing completion witness stay
- * identical to V1. H3 gameplay must use this same version after review.
- */
-export function generateIslandV2(seed: string): Island {
-  const cells: Cell[] = [];
-  for (let y = 0; y < BOARD_SIZE; y += 1) {
-    for (let x = 0; x < BOARD_SIZE; x += 1) {
-      const index = y * BOARD_SIZE + x;
-      const isHeart = index === heartIndex;
-      const isWitness = witnessIndices.has(index);
-      const isEdge = x === 0 || y === 0 || x === BOARD_SIZE - 1 || y === BOARD_SIZE - 1;
-      const score = Number(
-        BigInt(
-          `0x${keccak256(stringToHex(`worldseed:island-terrain:v2:${seed}:${x}:${y}`)).slice(2, 10)}`,
-        ) % 10_000n,
-      );
-      const terrain = isHeart
-        ? 'heart'
-        : isWitness
-          ? 'meadow'
-          : isEdge
-            ? score < 3_800
-              ? 'rock'
-              : 'shore'
-            : score < 2_600
-              ? 'rock'
-              : score < 3_400
-                ? 'shore'
-                : 'meadow';
-      const placeable = x < 6 && (!isEdge || isWitness);
-      cells.push({
-        x,
-        y,
-        region: regionAt(x),
-        terrain,
-        habitat: null,
-        placeable,
-        witnessCell: isWitness,
-      });
-    }
-  }
-  return { seed, generatorVersion: 2, cells, heartIndex };
 }
 
 export function regionIndex(region: RegionId): number {

@@ -11,8 +11,6 @@ import {
 import {
   gameContractAbi,
   gameContractAddress,
-  expeditionContractAddress,
-  expeditionContractAbi,
   TARGET_CHAIN_ID,
   TARGET_CHAIN_NAME,
 } from '../blockchain/config';
@@ -86,59 +84,27 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
   const { switchChainAsync, isPending: switching } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient({ chainId: TARGET_CHAIN_ID });
-  const activeExpedition = useReadContract({
-    address: expeditionContractAddress,
-    abi: expeditionContractAbi,
-    functionName: 'activeExpeditionId',
-    args: account.address ? [account.address] : undefined,
-    query: { enabled: Boolean(expeditionContractAddress && account.address) },
-  });
-  const usingV2 = Boolean(expeditionContractAddress && (activeExpedition.data ?? 0n) > 0n);
-  const v1Puzzle = useReadContract({
+  const chainPuzzle = useReadContract({
     address: gameContractAddress,
     abi: gameContractAbi,
     functionName: 'puzzleState',
     args: account.address ? [account.address] : undefined,
-    query: { enabled: Boolean(!usingV2 && gameContractAddress && account.address) },
+    query: { enabled: Boolean(gameContractAddress && account.address) },
   });
-  const v2Puzzle = useReadContract({
-    address: expeditionContractAddress,
-    abi: expeditionContractAbi,
-    functionName: 'puzzleState',
-    args: account.address ? [account.address] : undefined,
-    query: { enabled: Boolean(usingV2 && account.address) },
-  });
-  const v1Stamina = useReadContract({
+  const staminaQuery = useReadContract({
     address: gameContractAddress,
     abi: gameContractAbi,
     functionName: 'staminaState',
     args: account.address ? [account.address] : undefined,
-    query: { enabled: Boolean(!usingV2 && gameContractAddress && account.address) },
+    query: { enabled: Boolean(gameContractAddress && account.address) },
   });
-  const v2Stamina = useReadContract({
-    address: expeditionContractAddress,
-    abi: expeditionContractAbi,
-    functionName: 'staminaState',
-    args: account.address ? [account.address] : undefined,
-    query: { enabled: Boolean(usingV2 && account.address) },
-  });
-  const v1Gold = useReadContract({
+  const goldQuery = useReadContract({
     address: gameContractAddress,
     abi: gameContractAbi,
     functionName: 'goldBalances',
     args: account.address ? [account.address] : undefined,
-    query: { enabled: Boolean(!usingV2 && gameContractAddress && account.address) },
+    query: { enabled: Boolean(gameContractAddress && account.address) },
   });
-  const v2Gold = useReadContract({
-    address: expeditionContractAddress,
-    abi: expeditionContractAbi,
-    functionName: 'goldBalances',
-    args: account.address ? [account.address] : undefined,
-    query: { enabled: Boolean(usingV2 && account.address) },
-  });
-  const chainPuzzle = usingV2 ? v2Puzzle : v1Puzzle;
-  const staminaQuery = usingV2 ? v2Stamina : v1Stamina;
-  const goldQuery = usingV2 ? v2Gold : v1Gold;
 
   const [initialPractice] = useState(loadPractice);
   const [playType, setPlayType] = useState<'practice' | 'rewarded'>('practice');
@@ -156,7 +122,7 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
   const [spawnedIndex, setSpawnedIndex] = useState<number | undefined>();
   const touchStart = useRef<{ x: number; y: number } | undefined>(undefined);
   const walletReady = Boolean(
-    account.address && chainId === TARGET_CHAIN_ID && (usingV2 || gameContractAddress),
+    account.address && chainId === TARGET_CHAIN_ID && gameContractAddress,
   );
   const hasActiveChainRound = Boolean(chainPuzzle.data?.[0]);
   const currentMode = game?.mode ?? mode;
@@ -176,8 +142,7 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     if (playType !== 'rewarded' || !account.address || !chainPuzzle.data) return;
-    const [active, modeCode, moves, score, seed, rngState] = chainPuzzle.data;
-    const board = (usingV2 ? chainPuzzle.data[7] : chainPuzzle.data[6]) as readonly number[];
+    const [active, modeCode, moves, score, seed, rngState, board] = chainPuzzle.data;
     if (!seed) {
       const timer = window.setTimeout(() => {
         setGame(null);
@@ -221,7 +186,7 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
       );
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [playType, account.address, chainPuzzle.data, usingV2]);
+  }, [playType, account.address, chainPuzzle.data]);
 
   useEffect(() => {
     if (playType !== 'rewarded' || !account.address || !game) return;
@@ -321,49 +286,26 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
 
   async function startRewardedRound() {
     if (!walletReady || !publicClient || hasActiveChainRound) return;
-    const targetAddress = usingV2 ? expeditionContractAddress! : gameContractAddress!;
     setTxState('pending');
     try {
-      let hash: `0x${string}`;
-      if (usingV2) {
-        const args = [activeExpedition.data!, MODE_CODE[mode]] as const;
-        const gas = withGasSafetyMargin(
-          await publicClient.estimateContractGas({
-            address: targetAddress,
-            abi: expeditionContractAbi,
-            functionName: 'startPuzzleRound',
-            args,
-            account: account.address!,
-          }),
-        );
-        hash = await writeContractAsync({
-          address: targetAddress,
-          abi: expeditionContractAbi,
-          functionName: 'startPuzzleRound',
-          args,
-          gas,
-          chainId: TARGET_CHAIN_ID,
-        });
-      } else {
-        const args = [MODE_CODE[mode]] as const;
-        const gas = withGasSafetyMargin(
-          await publicClient.estimateContractGas({
-            address: targetAddress,
-            abi: gameContractAbi,
-            functionName: 'startPuzzleRound',
-            args,
-            account: account.address!,
-          }),
-        );
-        hash = await writeContractAsync({
-          address: targetAddress,
+      const args = [MODE_CODE[mode]] as const;
+      const gas = withGasSafetyMargin(
+        await publicClient.estimateContractGas({
+          address: gameContractAddress!,
           abi: gameContractAbi,
           functionName: 'startPuzzleRound',
           args,
-          gas,
-          chainId: TARGET_CHAIN_ID,
-        });
-      }
+          account: account.address!,
+        }),
+      );
+      const hash = await writeContractAsync({
+        address: gameContractAddress!,
+        abi: gameContractAbi,
+        functionName: 'startPuzzleRound',
+        args,
+        gas,
+        chainId: TARGET_CHAIN_ID,
+      });
       await requireSuccessfulReceipt((onReplaced) =>
         publicClient.waitForTransactionReceipt({
           hash,
@@ -390,10 +332,9 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
     const batch = pendingDirections.slice(0, MAX_SAVED_MOVES);
     setTxState('pending');
     try {
-      const targetAddress = usingV2 ? expeditionContractAddress! : gameContractAddress!;
       const hash = await writeContractAsync({
-        address: targetAddress,
-        abi: usingV2 ? expeditionContractAbi : gameContractAbi,
+        address: gameContractAddress!,
+        abi: gameContractAbi,
         functionName: 'savePuzzleMoves',
         args: [confirmedMoves, batch, cashOut],
         chainId: TARGET_CHAIN_ID,
@@ -534,9 +475,7 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
               {(game?.board ?? Array(16).fill(0)).map((tile, index) => (
                 <div
                   className={`puzzle-tile puzzle-tile--${Math.min(tile, 11)} ${tile && spawnedIndex === index ? 'puzzle-tile--spawned' : ''}`}
-                  style={{
-                    fontSize: `clamp(10px, ${tileFontSizeCqw(tile)}cqw, 34px)`,
-                  }}
+                  style={{ fontSize: `clamp(10px, ${tileFontSizeCqw(tile)}cqw, 34px)` }}
                   role="gridcell"
                   aria-label={tile ? `${2 ** tile}` : 'empty'}
                   key={index}
@@ -660,18 +599,13 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
                   <strong>Active round resumed</strong>
                   {pendingDirections.length > 0 && (
                     <button
-                      className={
-                        pendingDirections.length >= MAX_SAVED_MOVES
-                          ? 'primary-button puzzle-action'
-                          : 'secondary-button'
-                      }
+                      className="secondary-button"
                       type="button"
                       onClick={() => void saveRewardedMoves(false)}
                       disabled={txState === 'pending'}
                     >
-                      {pendingDirections.length >= MAX_SAVED_MOVES
-                        ? 'Save checkpoint to continue'
-                        : `Save ${pendingDirections.length} move${pendingDirections.length === 1 ? '' : 's'}`}
+                      Save {pendingDirections.length} move
+                      {pendingDirections.length === 1 ? '' : 's'}
                     </button>
                   )}
                   {game?.over && (
@@ -693,6 +627,11 @@ export function PuzzleGame({ onBack }: { onBack: () => void }) {
                     >
                       Cash out for Gold
                     </button>
+                  )}
+                  {!game?.over && pendingDirections.length >= MAX_SAVED_MOVES && (
+                    <p className="puzzle-save-hint">
+                      Save this 20 move checkpoint to keep playing.
+                    </p>
                   )}
                 </>
               ) : (

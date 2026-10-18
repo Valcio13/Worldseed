@@ -45,6 +45,7 @@
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",
     "typescript": "latest",
-    "vitest": "latest"
+    "vitest": "latest",
+    "wrangler": "^4.151.1"
   }
 }

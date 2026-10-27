@@ -959,6 +959,35 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
         </section>
 
         <section className="game-layout" aria-label="Island restoration game">
+          <aside className="game-journal" aria-label="Quest journal">
+            <div className="game-panel-heading">
+              <span className="game-panel-kicker">QUEST JOURNAL</span>
+              <strong>Island restoration</strong>
+            </div>
+            <div className="journal-progress-copy">
+              <span>Healthy habitats</span>
+              <strong>
+                {totalHealthy}
+                <small> / 12</small>
+              </strong>
+            </div>
+            <div className="journal-progress-track" aria-hidden="true">
+              <span style={{ width: `${Math.min(100, (totalHealthy / 12) * 100)}%` }} />
+            </div>
+            <p>
+              {game.complete
+                ? 'The Island Heart is whole.'
+                : `Restore the island to uncover ${REGIONS[game.unlockedThrough + 1]?.name ?? 'the final reach'}.`}
+            </p>
+            <button
+              type="button"
+              className="journal-open-button"
+              onClick={() => setShowIslandDetails(true)}
+            >
+              Open journal <span aria-hidden="true">→</span>
+            </button>
+          </aside>
+
           <div className="board-column">
             {game.demo &&
               account.isConnected &&
@@ -1240,21 +1269,21 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
             <div className="board-tools">
               <div className="action-tools" role="group" aria-label="Island action">
                 <button
-                  className={tool === 'place' ? 'tool-button tool-button--active' : 'tool-button'}
+                  className={`tool-button tool-button--place ${tool === 'place' ? 'tool-button--active' : ''}`}
                   onClick={() => setTool('place')}
                   type="button"
                 >
                   <span>＋</span> Place
                 </button>
                 <button
-                  className={tool === 'gather' ? 'tool-button tool-button--active' : 'tool-button'}
+                  className={`tool-button tool-button--remove ${tool === 'gather' ? 'tool-button--active' : ''}`}
                   onClick={() => setTool('gather')}
                   type="button"
                 >
                   <span>⌫</span> Remove
                 </button>
                 <button
-                  className={tool === 'inspect' ? 'tool-button tool-button--active' : 'tool-button'}
+                  className={`tool-button tool-button--inspect ${tool === 'inspect' ? 'tool-button--active' : ''}`}
                   onClick={() => setTool('inspect')}
                   type="button"
                 >
@@ -1309,11 +1338,53 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
                 </div>
               </div>
             )}
-            <p className="live-notice" role="status" aria-live="polite">
-              <span className="notice-spark">✦</span>
-              {notice}
-            </p>
+            {notice !== 'Choose a habitat, then place it beside the right neighbors.' && (
+              <p className="live-notice" role="status" aria-live="polite">
+                <span className="notice-spark">✦</span>
+                {notice}
+              </p>
+            )}
           </div>
+
+          <aside className="game-locations" aria-label="Island locations">
+            <div className="game-panel-heading">
+              <span className="game-panel-kicker">LOCATIONS</span>
+              <strong>Island landmarks</strong>
+            </div>
+            <button
+              type="button"
+              className="location-button location-button--shrine"
+              onClick={onOpenPuzzle}
+            >
+              <span aria-hidden="true">✧</span>
+              <span>
+                <b>Seed Shrine</b>
+                <small>2048 grove game</small>
+              </span>
+            </button>
+            <button
+              type="button"
+              className="location-button location-button--merchant"
+              onClick={() => setShowMerchant(true)}
+            >
+              <span aria-hidden="true">♟</span>
+              <span>
+                <b>Traveling Merchant</b>
+                <small>Habitat supplies</small>
+              </span>
+            </button>
+            <button
+              type="button"
+              className="location-button location-button--tree"
+              onClick={() => setShowWorldTree(true)}
+            >
+              <span aria-hidden="true">✣</span>
+              <span>
+                <b>World Tree</b>
+                <small>{worldPoints} weekly points</small>
+              </span>
+            </button>
+          </aside>
 
           {showIslandDetails && (
             <div

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { WagmiProvider } from 'wagmi';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -165,34 +165,6 @@ describe('first guest journey', () => {
     await user.click(screen.getByRole('button', { name: /regions & details/i }));
     expect(screen.getByText('Dry Basin')).toBeInTheDocument();
     expect(screen.queryByText(/save progress/i)).not.toBeInTheDocument();
-  });
-
-  it('starts and saves a practice 2048 round without a wallet or contract', async () => {
-    localStorage.clear();
-    const user = userEvent.setup();
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <WagmiProvider config={wagmiConfig}>
-        <QueryClientProvider client={queryClient}>
-          <App />
-        </QueryClientProvider>
-      </WagmiProvider>,
-    );
-
-    await user.click(screen.getAllByRole('button', { name: /play 2048/i })[0]!);
-    await user.click(await screen.findByRole('button', { name: /start practice/i }));
-    for (const direction of ['left', 'up', 'right', 'down']) {
-      await user.click(screen.getByRole('button', { name: `Move ${direction}` }));
-    }
-
-    await waitFor(() => {
-      const save = JSON.parse(localStorage.getItem('worldseed:2048:practice:v1') ?? 'null');
-      expect(save?.state?.validMoves).toBeGreaterThan(0);
-    });
-    expect(Object.keys(localStorage).some((key) => key.startsWith('worldseed:2048:pending:'))).toBe(
-      false,
-    );
-    expect(screen.getByText('PRACTICE · NO REWARDS')).toBeInTheDocument();
   });
 
   it('opens the Traveling Merchant and World Tree from their island landmarks', async () => {

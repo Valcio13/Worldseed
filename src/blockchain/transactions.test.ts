@@ -55,7 +55,7 @@ describe('transaction receipt validation', () => {
     await expect(requireSuccessfulReceipt(async () => Promise.reject(timeout))).rejects.toBe(
       timeout,
     );
-    expect(transactionFailureMessage(timeout, 'Puzzle save')).toMatch(
+    expect(transactionFailureMessage(timeout, 'Habitat purchase')).toMatch(
       /may still be pending.*before retrying/i,
     );
   });

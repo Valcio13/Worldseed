@@ -11,6 +11,7 @@ interface V3CommandQueueProps {
   onRetry?: (commandId: string) => void;
   onRecover?: () => void;
   onClear?: () => void;
+  onDiscardQueuedHeartClicks?: () => void;
 }
 
 const COMMAND_TYPE_LABELS: Record<string, string> = {
@@ -35,7 +36,13 @@ function getCommandTypeLabel(payload: V3Command['payload']): string {
   return label || payload.type;
 }
 
-export function V3CommandQueue({ queueState, onRetry, onRecover, onClear }: V3CommandQueueProps) {
+export function V3CommandQueue({
+  queueState,
+  onRetry,
+  onRecover,
+  onClear,
+  onDiscardQueuedHeartClicks,
+}: V3CommandQueueProps) {
   const {
     commands,
     isSubmitting,
@@ -44,7 +51,7 @@ export function V3CommandQueue({ queueState, onRetry, onRecover, onClear }: V3Co
     failedCount = 0,
   } = queueState;
 
-  if (commands.length === 0) {
+  if (commands.length === 0 && queueState.queuedHeartClicks === 0) {
     return (
       <div className="v3-command-queue v3-command-queue--empty" aria-label="Command queue">
         <div className="v3-queue-empty">
@@ -89,6 +96,18 @@ export function V3CommandQueue({ queueState, onRetry, onRecover, onClear }: V3Co
         <p className="v3-error-text" role="alert">
           {queueState.recoveryError}
         </p>
+      )}
+      {queueState.queuedHeartClicks > 0 && (
+        <div className="v3-queue-heart-backlog" role="status">
+          {queueState.heartQueueBlocked
+            ? `${queueState.queuedHeartClicks} Heart click${queueState.queuedHeartClicks === 1 ? '' : 's'} remain queued after a rejected command.`
+            : `Sending ${queueState.queuedHeartClicks} queued Heart click${queueState.queuedHeartClicks === 1 ? '' : 's'} in order.`}
+          {queueState.heartQueueBlocked && onDiscardQueuedHeartClicks && (
+            <button type="button" onClick={onDiscardQueuedHeartClicks}>
+              Discard queued clicks
+            </button>
+          )}
+        </div>
       )}
       {onRecover && (
         <button

@@ -38,6 +38,7 @@ export interface V3LivingProfile {
 export interface V3LivingSettlementControls {
   pending: boolean;
   canSettle: boolean;
+  error?: string | null;
   recordPoints: () => void;
   rebirth: () => void;
 }
@@ -51,7 +52,7 @@ export function V3IslandProgression({
   onSettlementControlsReady,
 }: {
   onSnapshotChange: (snapshot: V3IslandSnapshot | null) => void;
-  onHeartActionReady: (action: (() => void) | null) => void;
+  onHeartActionReady: (action: (() => boolean) | null) => void;
   onActionHandlersReady: (handlers: V3IslandActionHandlers | null) => void;
   onProfileChange: (profile: V3LivingProfile | null) => void;
   onSettlementControlsReady: (controls: V3LivingSettlementControls | null) => void;
@@ -73,7 +74,7 @@ function VerifiedProgression({
   onSettlementControlsReady,
 }: {
   onSnapshotChange: (snapshot: V3IslandSnapshot | null) => void;
-  onHeartActionReady: (action: (() => void) | null) => void;
+  onHeartActionReady: (action: (() => boolean) | null) => void;
   onActionHandlersReady: (handlers: V3IslandActionHandlers | null) => void;
   onProfileChange: (profile: V3LivingProfile | null) => void;
   onSettlementControlsReady: (controls: V3LivingSettlementControls | null) => void;
@@ -85,6 +86,7 @@ function VerifiedProgression({
   const runStateRef = useRef(runState);
   const authRef = useRef(auth);
   const startFlowRef = useRef<ReturnType<typeof useStartRunFlow> | null>(null);
+  const flushPendingCommandsRef = useRef<(() => Promise<void>) | null>(null);
   const { connectAsync, connectors, isPending: connecting } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChainAsync, isPending: switching } = useSwitchChain();
@@ -96,7 +98,7 @@ function VerifiedProgression({
   const startFlow = useStartRunFlow({
     onAuthRequired: async () => {
       if (!auth.isAuthenticated || !auth.sessionToken)
-        throw new Error('Authenticate your wallet before starting a verified run.');
+        throw new Error('Authenticate your wallet before starting a Live run.');
       return auth.sessionToken;
     },
     onStartRun: async (sessionToken, upgrades) => {
@@ -113,6 +115,10 @@ function VerifiedProgression({
   }, [auth, runState, settlement, startFlow]);
   const authenticationRunId = activeVerifiedRunId ?? startFlow.nextRunId?.toString();
   const lastStartChoices = useRef<Array<{ upgradeId: V3UpgradeKind; quantity: number }>>([]);
+  const forwardActionHandlers = useCallback((handlers: V3IslandActionHandlers | null) => {
+    flushPendingCommandsRef.current = handlers?.flushPendingCommands ?? null;
+    onActionHandlersReady(handlers);
+  }, [onActionHandlersReady]);
   // The current hook's derived access flag can be undefined before wallet/config state settles.
   const statusRunState = { ...runState, canAccessV3: Boolean(runState.canAccessV3) };
   const hasActiveRun = runState.runId > 0n && runState.run?.status === 'ACTIVE';
@@ -179,15 +185,17 @@ function VerifiedProgression({
 
   const recordRunPoints = useCallback(async () => {
     try {
+      await flushPendingCommandsRef.current?.();
       await settlementRef.current.recordPoints();
       await runStateRef.current.refetch();
-    } catch {
-      // The settlement hook exposes the failure state for the UI below.
+    } catch (error) {
+      setWalletError(error instanceof Error ? error.message : 'Live actions must sync before recording points.');
     }
   }, []);
 
   const rebirthRun = useCallback(async () => {
     try {
+      await flushPendingCommandsRef.current?.();
       await settlementRef.current.rebirth();
       // A confirmed rebirth closes this run and makes the next session bind to
       // counter + 1. End the old run-bound verifier session before refreshing.
@@ -197,8 +205,8 @@ function VerifiedProgression({
         runStateRef.current.refetch(),
         flow?.refreshNextRunId() ?? Promise.resolve(),
       ]);
-    } catch {
-      // The settlement hook exposes the failure/uncertain state for recovery.
+    } catch (error) {
+      setWalletError(error instanceof Error ? error.message : 'Live actions must sync before Rebirth.');
     }
   }, []);
 
@@ -254,9 +262,10 @@ function VerifiedProgression({
   const settlementControls = useMemo<V3LivingSettlementControls>(() => ({
     pending: transactionState === 'pending',
     canSettle: canSettleRun,
+    error: walletError,
     recordPoints: () => void recordRunPoints(),
     rebirth: () => void rebirthRun(),
-  }), [canSettleRun, recordRunPoints, rebirthRun, transactionState]);
+  }), [canSettleRun, recordRunPoints, rebirthRun, transactionState, walletError]);
 
   useEffect(() => onProfileChange(playerProfile), [onProfileChange, playerProfile]);
   useEffect(() => onSettlementControlsReady(settlementControls), [onSettlementControlsReady, settlementControls]);
@@ -294,11 +303,12 @@ function VerifiedProgression({
     <div className="v3-living-tools">
       <details className="v3-living-account">
         <summary>
-          {runState.wallet ? `${runState.wallet.slice(0, 6)}…${runState.wallet.slice(-4)}` : 'Verified account'}
+          {runState.wallet ? `${runState.wallet.slice(0, 6)}…${runState.wallet.slice(-4)}` : 'Live account'}
           <span>{auth.isAuthenticated ? ' · ready' : ''}</span>
         </summary>
         <div className="v3-living-account-panel">
-          <p className="v3-living-account-mode">Verified · Hemi Sepolia</p>
+          <p className="v3-living-account-mode">Live · Hemi Sepolia</p>
+          <p>Guest progress is simulated. Live rewards require an authenticated verifier-backed run.</p>
           <button type="button" onClick={() => void handleWalletAction()} disabled={walletBusy}>
             {connecting ? 'Connecting…' : switching ? 'Switching…' : disconnectLabel}
           </button>
@@ -313,7 +323,7 @@ function VerifiedProgression({
                       ? 'Waiting for the next run ID.'
                       : isAuthenticating
                         ? 'Confirm the sign-in message in your wallet.'
-                        : auth.error ?? 'Authenticate to load and play a verified run.'}
+                        : auth.error ?? 'Authenticate to load and play a Live run.'}
               </p>
               {auth.isAuthenticated ? (
                 <button type="button" onClick={auth.logout}>End session</button>
@@ -328,7 +338,7 @@ function VerifiedProgression({
               )}
               {!hasActiveRun && auth.isAuthenticated && (
                 <details className="v3-start-run-menu">
-                  <summary>Start a verified run</summary>
+                  <summary>Start a Live run</summary>
                   <V3RunControls
                     runState={statusRunState}
                     transactionState={transactionState}
@@ -373,14 +383,19 @@ function VerifiedProgression({
             <button
               type="button"
               onClick={async () => {
-                await runState.abandonRun(runState.runId);
-                auth.logout();
-                await runState.refetch();
-                await startFlow.refreshNextRunId();
+                try {
+                  await flushPendingCommandsRef.current?.();
+                  await runState.abandonRun(runState.runId);
+                  auth.logout();
+                  await runState.refetch();
+                  await startFlow.refreshNextRunId();
+                } catch (error) {
+                  setWalletError(error instanceof Error ? error.message : 'Live actions must sync before abandoning.');
+                }
               }}
               disabled={transactionState === 'pending'}
             >
-              Abandon verified run
+              Abandon Live run
             </button>
           </details>
         )}
@@ -391,11 +406,11 @@ function VerifiedProgression({
             sessionToken={auth.sessionToken}
             onSnapshotChange={onSnapshotChange}
             onHeartActionReady={onHeartActionReady}
-            onActionHandlersReady={onActionHandlersReady}
+            onActionHandlersReady={forwardActionHandlers}
           />
         )}
         {hasActiveRun && !auth.isAuthenticated && (
-          <p role="status">Authenticate in Verified account to recover this run's state.</p>
+          <p role="status">Authenticate in Live account to recover this run's state.</p>
         )}
         </div>
       </details>

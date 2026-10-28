@@ -599,6 +599,7 @@ describe('V3 Command Queue', () => {
         sessionToken: 'token-123',
         isSubmitting: false,
         recoveringCursor: false,
+        queuedHeartClicks: 0,
       };
 
       const pendingCount = state.commands.filter((c) => c.status === 'pending').length;
@@ -639,6 +640,7 @@ describe('V3 Command Queue', () => {
         sessionToken: 'token-123',
         isSubmitting: false,
         recoveringCursor: false,
+        queuedHeartClicks: 0,
       };
 
       const confirmedCount = state.commands.filter((c) => c.status === 'confirmed').length;
@@ -673,6 +675,7 @@ describe('V3 Command Queue', () => {
         sessionToken: 'token-123',
         isSubmitting: false,
         recoveringCursor: false,
+        queuedHeartClicks: 0,
       };
 
       const failedCount = state.commands.filter((c) => c.status === 'failed').length;
@@ -691,6 +694,7 @@ describe('V3 Command Queue', () => {
         sessionToken: 'bearer-token-xyz',
         isSubmitting: false,
         recoveringCursor: false,
+        queuedHeartClicks: 0,
       };
 
       expect(state.sessionToken).toBe('bearer-token-xyz');
@@ -708,6 +712,7 @@ describe('V3 Command Queue', () => {
         sessionToken: 'token',
         isSubmitting: false,
         recoveringCursor: true,
+        queuedHeartClicks: 0,
         recoveryError: undefined,
       };
 
@@ -990,6 +995,83 @@ describe('useV3Commands persistence and verifier behavior', () => {
     expect(submitSpy.mock.calls[1][1]).toEqual(firstEnvelope);
     expect(reloaded.result.current.state?.commands[0].status).toBe('confirmed');
     releaseFirst(receipt(firstEnvelope.commandId, 1));
+  });
+
+  it('durably queues rapid Heart clicks and submits them in sequence without losing clicks', async () => {
+    let releaseFirst!: (value: V3CommandReceipt) => void;
+    const submitSpy = vi
+      .spyOn(v3Api, 'submitCommand')
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            releaseFirst = resolve;
+          }),
+      )
+      .mockImplementation(async (_run, envelope) =>
+        receipt(envelope.commandId, envelope.expectedSequence + 1),
+      );
+    const { result } = renderHook(() => useV3Commands(runId, token));
+
+    act(() => {
+      expect(result.current.enqueueHeartClick()).toBe(true);
+      expect(result.current.enqueueHeartClick()).toBe(true);
+      expect(result.current.enqueueHeartClick()).toBe(true);
+    });
+    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1));
+    const persisted = JSON.parse(
+      window.localStorage.getItem(`worldseed:v3:command-queue:${runId}`) ?? '{}',
+    );
+    expect(persisted.queuedHeartClicks).toBe(2);
+    expect(persisted.commands[0].status).toBe('pending');
+
+    await act(async () => {
+      releaseFirst(receipt(submitSpy.mock.calls[0][1].commandId, 1));
+    });
+    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(3));
+    await waitFor(() => {
+      expect(result.current.state?.queuedHeartClicks).toBe(0);
+      expect(result.current.state?.cursor.currentSequence).toBe(3);
+    });
+    expect(submitSpy.mock.calls.map((call) => call[1].expectedSequence)).toEqual([0, 1, 2]);
+    expect(result.current.state?.commands.filter((command) => command.payload.type === 'heart-click'))
+      .toHaveLength(1);
+    await act(async () => result.current.flushPendingCommands());
+  });
+
+  it('restores queued Heart clicks after refresh and waits for the interrupted envelope retry', async () => {
+    let releaseFirst!: (value: V3CommandReceipt) => void;
+    const submitSpy = vi
+      .spyOn(v3Api, 'submitCommand')
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            releaseFirst = resolve;
+          }),
+      )
+      .mockImplementation(async (_run, envelope) =>
+        receipt(envelope.commandId, envelope.expectedSequence + 1),
+      );
+    const first = renderHook(() => useV3Commands(runId, token));
+    act(() => {
+      first.result.current.enqueueHeartClick();
+      first.result.current.enqueueHeartClick();
+    });
+    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1));
+    const interruptedEnvelope = submitSpy.mock.calls[0][1];
+    first.unmount();
+
+    const reloaded = renderHook(() => useV3Commands(runId, 'renewed-session'));
+    await waitFor(() => expect(reloaded.result.current.state?.commands[0].status).toBe('uncertain'));
+    expect(reloaded.result.current.state?.queuedHeartClicks).toBe(1);
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await reloaded.result.current.retryCommand(interruptedEnvelope.commandId);
+    });
+    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(3));
+    expect(submitSpy.mock.calls[1][1]).toEqual(interruptedEnvelope);
+    expect(submitSpy.mock.calls[2][1].expectedSequence).toBe(1);
+    await waitFor(() => expect(reloaded.result.current.state?.queuedHeartClicks).toBe(0));
+    releaseFirst(receipt(interruptedEnvelope.commandId, 1));
   });
 
   it('discards malformed local data and never writes auth tokens to storage', async () => {

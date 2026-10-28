@@ -30,6 +30,10 @@ function isPersistedQueue(value: unknown, runId: string): value is V3CommandQueu
   const candidate = value as Partial<V3CommandQueueState>;
   return (
     candidate.cursor?.runId === runId &&
+    (candidate.queuedHeartClicks === undefined ||
+      (Number.isSafeInteger(candidate.queuedHeartClicks) && candidate.queuedHeartClicks >= 0)) &&
+    (candidate.heartQueueBlocked === undefined ||
+      typeof candidate.heartQueueBlocked === 'boolean') &&
     Number.isSafeInteger(candidate.cursor.currentSequence) &&
     candidate.cursor.currentSequence! >= 0 &&
     Number.isSafeInteger(candidate.cursor.expectedSequence) &&
@@ -70,6 +74,8 @@ function loadQueue(runId: string, sessionToken: string): V3CommandQueueState {
     }
     return {
       ...parsed,
+      queuedHeartClicks: parsed.queuedHeartClicks ?? 0,
+      heartQueueBlocked: parsed.heartQueueBlocked ?? false,
       commands: parsed.commands.map((command) =>
         command.status === 'pending'
           ? {
@@ -94,6 +100,8 @@ function persistQueue(state: V3CommandQueueState): boolean {
     const persisted = {
       commands: state.commands,
       cursor: state.cursor,
+      queuedHeartClicks: state.queuedHeartClicks,
+      heartQueueBlocked: state.heartQueueBlocked ?? false,
       ...(state.recoveryError ? { recoveryError: state.recoveryError } : {}),
     };
     window.localStorage.setItem(storageKey(state.cursor.runId), JSON.stringify(persisted));
@@ -145,6 +153,8 @@ function createInitialState(runId: string, sessionToken: string): V3CommandQueue
     sessionToken,
     isSubmitting: false,
     recoveringCursor: false,
+    queuedHeartClicks: 0,
+    heartQueueBlocked: false,
     pendingCount: 0,
     confirmedCount: 0,
     failedCount: 0,
@@ -163,12 +173,24 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
   const [state, setState] = useState<V3CommandQueueState | null>(() =>
     runId && sessionToken ? loadQueue(runId, sessionToken) : null,
   );
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const commitState = useCallback((
+    update:
+      | V3CommandQueueState
+      | null
+      | ((previous: V3CommandQueueState | null) => V3CommandQueueState | null),
+  ) => {
+    const next = typeof update === 'function' ? update(stateRef.current) : update;
+    stateRef.current = next;
+    setState(next);
+  }, []);
   const submitting = useRef(false);
 
   useEffect(() => {
-    setState(runId && sessionToken ? loadQueue(runId, sessionToken) : null);
+    commitState(runId && sessionToken ? loadQueue(runId, sessionToken) : null);
     submitting.current = false;
-  }, [runId, sessionToken]);
+  }, [commitState, runId, sessionToken]);
 
   useEffect(() => {
     if (state && state.cursor.runId === runId) persistQueue(state);
@@ -180,7 +202,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
   const recoverState = useCallback(async () => {
     if (!runId || !sessionToken) return null;
 
-    setState((prev) =>
+    commitState((prev) =>
       prev ? { ...prev, recoveringCursor: true, recoveryError: undefined } : null,
     );
 
@@ -194,7 +216,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         throw new Error('Verifier returned an invalid run cursor.');
       }
 
-      setState((prev) => {
+      commitState((prev) => {
         if (!prev) return null;
         return {
           ...prev,
@@ -210,7 +232,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       return recovery;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Recovery failed';
-      setState((prev) =>
+      commitState((prev) =>
         prev
           ? {
               ...prev,
@@ -221,24 +243,28 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       );
       throw error;
     }
-  }, [runId, sessionToken]);
+  }, [commitState, runId, sessionToken]);
 
   /**
    * Submit a command to the verifier
    * Persists command before submission to enable retries
    */
   const submitCommand = useCallback(
-    async (command: V3GameplayCommand) => {
-      if (!state || !runId || !sessionToken) {
+    async (command: V3GameplayCommand, consumeQueuedHeart = false) => {
+      const currentState = stateRef.current;
+      if (!currentState || !runId || !sessionToken) {
         throw new Error('Command queue not initialized or session expired');
       }
       if (submitting.current) throw new Error('A command is already being submitted');
       if (
-        state.commands.some(
+        currentState.commands.some(
           (command) => command.status === 'pending' || command.status === 'uncertain',
         )
       ) {
         throw new Error('Resolve the existing command before submitting another command');
+      }
+      if (consumeQueuedHeart && (command.type !== 'heart-click' || currentState.queuedHeartClicks <= 0)) {
+        throw new Error('No queued Heart click is available.');
       }
       submitting.current = true;
 
@@ -249,22 +275,23 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       const persistedCommand: V3Command = {
         commandId,
         payload,
-        expectedSequence: state.cursor.expectedSequence,
+        expectedSequence: currentState.cursor.expectedSequence,
         submittedAt: Date.now(),
         status: 'pending',
       };
 
       // Save the exact envelope before the request can leave the browser.
       const queuedState = {
-        ...state,
-        commands: [...state.commands, persistedCommand],
+        ...currentState,
+        commands: [...currentState.commands, persistedCommand],
+        queuedHeartClicks: currentState.queuedHeartClicks - (consumeQueuedHeart ? 1 : 0),
         isSubmitting: true,
       };
       if (!persistQueue(queuedState)) {
         submitting.current = false;
         throw new Error('Unable to save the command locally; nothing was sent.');
       }
-      setState(queuedState);
+      commitState(queuedState);
 
       try {
         // Submit with exact command ID and expected sequence
@@ -272,7 +299,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
           runId,
           {
             commandId,
-            expectedSequence: state.cursor.expectedSequence,
+            expectedSequence: persistedCommand.expectedSequence,
             command: payload,
           },
           sessionToken,
@@ -281,8 +308,32 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         assertReceiptMatches(receipt, commandId, persistedCommand.expectedSequence, runId);
 
         // Update state with receipt and advance cursor
-        setState((prev) => {
+        commitState((prev) => {
           if (!prev) return null;
+          const commands = prev.commands.map((c) =>
+            c.commandId === commandId
+              ? {
+                  ...c,
+                  status: 'confirmed' as const,
+                  confirmedAt: Date.now(),
+                  receipt,
+                  creditedAtoms: receipt.creditedAtoms,
+                  spentAtoms: receipt.spentAtoms,
+                  scoreTier: receipt.scoreTier,
+                }
+              : c,
+          );
+          // Keep frequent Heart clicks from growing the persisted activity list indefinitely.
+          const compactCommands =
+            payload.type === 'heart-click'
+              ? commands.filter(
+                  (c) =>
+                    c.payload.type !== 'heart-click' ||
+                    c.commandId === commandId ||
+                    c.status === 'pending' ||
+                    c.status === 'uncertain',
+                )
+              : commands;
           return {
             ...prev,
             isSubmitting: false,
@@ -291,19 +342,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
               currentSequence: receipt.cursor.sequence,
               expectedSequence: receipt.cursor.sequence,
             },
-            commands: prev.commands.map((c) =>
-              c.commandId === commandId
-                ? {
-                    ...c,
-                    status: 'confirmed',
-                    confirmedAt: Date.now(),
-                    receipt,
-                    creditedAtoms: receipt.creditedAtoms,
-                    spentAtoms: receipt.spentAtoms,
-                    scoreTier: receipt.scoreTier,
-                  }
-                : c,
-            ),
+            commands: compactCommands,
           };
         });
 
@@ -321,7 +360,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
               status = 'failed';
               if (err.errorResponse?.recovery) {
                 const { cursor } = err.errorResponse.recovery;
-                setState((prev) =>
+                commitState((prev) =>
                   prev
                     ? {
                         ...prev,
@@ -337,7 +376,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
               } else {
                 try {
                   const recovery = await v3Api.recoverRun(runId, sessionToken);
-                  setState((prev) =>
+                  commitState((prev) =>
                     prev
                       ? {
                           ...prev,
@@ -362,7 +401,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
               status = 'failed';
               if (err.errorResponse?.recovery) {
                 const { cursor } = err.errorResponse.recovery;
-                setState((prev) =>
+                commitState((prev) =>
                   prev
                     ? {
                         ...prev,
@@ -378,7 +417,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
               } else {
                 try {
                   const recovery = await v3Api.recoverRun(runId, sessionToken);
-                  setState((prev) =>
+                  commitState((prev) =>
                     prev
                       ? {
                           ...prev,
@@ -402,7 +441,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
               status = 'uncertain';
               // Try to recover cursor if provided
               if (err.errorResponse?.recovery) {
-                setState((prev) => {
+                commitState((prev) => {
                   if (!prev) return null;
                   return {
                     ...prev,
@@ -439,11 +478,17 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
           }
         }
 
-        setState((prev) => {
+        commitState((prev) => {
           if (!prev) return null;
           return {
             ...prev,
             isSubmitting: false,
+            ...(consumeQueuedHeart && status === 'failed'
+              ? {
+                  queuedHeartClicks: prev.queuedHeartClicks + 1,
+                  heartQueueBlocked: true,
+                }
+              : {}),
             commands: prev.commands.map((c) =>
               c.commandId === commandId
                 ? {
@@ -461,7 +506,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         submitting.current = false;
       }
     },
-    [state, runId, sessionToken],
+    [commitState, runId, sessionToken],
   );
 
   /**
@@ -470,12 +515,13 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
    */
   const retryCommand = useCallback(
     async (commandId: string) => {
-      if (!state || !runId || !sessionToken) {
+      const currentState = stateRef.current;
+      if (!currentState || !runId || !sessionToken) {
         throw new Error('Command queue not initialized or session expired');
       }
       if (submitting.current) throw new Error('A command is already being submitted');
 
-      const command = state.commands.find((c) => c.commandId === commandId);
+      const command = currentState.commands.find((c) => c.commandId === commandId);
       if (!command) {
         throw new Error('Command not found');
       }
@@ -485,7 +531,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       submitting.current = true;
 
       // Reset to pending
-      setState((prev) =>
+      commitState((prev) =>
         prev
           ? {
               ...prev,
@@ -514,7 +560,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         assertReceiptMatches(receipt, commandId, command.expectedSequence, runId);
 
         // Update with receipt
-        setState((prev) => {
+        commitState((prev) => {
           if (!prev) return null;
           return {
             ...prev,
@@ -547,7 +593,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         ) {
           try {
             const recovery = await v3Api.recoverRun(runId, sessionToken);
-            setState((prev) =>
+            commitState((prev) =>
               prev
                 ? {
                     ...prev,
@@ -566,7 +612,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         }
 
         // Update error status
-        setState((prev) => {
+        commitState((prev) => {
           if (!prev) return null;
           const status: 'uncertain' | 'failed' =
             apiError &&
@@ -602,7 +648,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         submitting.current = false;
       }
     },
-    [state, runId, sessionToken],
+    [commitState, runId, sessionToken],
   );
 
   /**
@@ -616,7 +662,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
    * Clear completed commands from queue
    */
   const clearCompleted = useCallback(() => {
-    setState((prev) =>
+    commitState((prev) =>
       prev
         ? {
             ...prev,
@@ -626,7 +672,55 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
           }
         : null,
     );
+  }, [commitState]);
+
+  const enqueueHeartClick = useCallback(() => {
+    const current = stateRef.current;
+    if (!current || !runId || !sessionToken || current.heartQueueBlocked) return false;
+    if (current.queuedHeartClicks >= 1_000) return false;
+    const next = { ...current, queuedHeartClicks: current.queuedHeartClicks + 1 };
+    if (!persistQueue(next)) return false;
+    commitState(next);
+    return true;
+  }, [commitState, runId, sessionToken]);
+
+  const discardQueuedHeartClicks = useCallback(() => {
+    const current = stateRef.current;
+    if (!current) return;
+    const next = { ...current, queuedHeartClicks: 0, heartQueueBlocked: false };
+    if (persistQueue(next)) commitState(next);
+  }, [commitState]);
+
+  const flushPendingCommands = useCallback(async () => {
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      const current = stateRef.current;
+      if (!current) throw new Error('Live command queue is unavailable.');
+      if (current.heartQueueBlocked)
+        throw new Error('A Heart collection was rejected. Review the pending queue before continuing.');
+      if (current.commands.some((command) => command.status === 'uncertain'))
+        throw new Error('A Live action needs retry or recovery before this transition.');
+      const pending = current.commands.some((command) => command.status === 'pending');
+      if (!pending && current.queuedHeartClicks === 0 && !current.isSubmitting) return;
+      await new Promise((resolve) => window.setTimeout(resolve, 25));
+    }
+    throw new Error('Live actions are still syncing. Try the transition again in a moment.');
   }, []);
+
+  useEffect(() => {
+    if (
+      !state ||
+      state.queuedHeartClicks <= 0 ||
+      state.heartQueueBlocked ||
+      state.isSubmitting ||
+      state.recoveringCursor ||
+      state.commands.some((command) => command.status === 'pending' || command.status === 'uncertain')
+    ) return;
+    const timer = window.setTimeout(() => {
+      void submitCommand({ type: 'heart-click' }, true).catch(() => undefined);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [state, submitCommand]);
 
   // Compute counts
   const computedState = state
@@ -645,6 +739,9 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
     recoverState,
     resolveConflict,
     clearCompleted,
+    enqueueHeartClick,
+    discardQueuedHeartClicks,
+    flushPendingCommands,
     isReady: !!state,
   };
 }

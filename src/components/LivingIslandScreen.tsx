@@ -240,7 +240,7 @@ export interface LivingIslandScreenProps {
   mode?: LivingIslandMode;
   verifiedModeEnabled?: boolean;
   verifiedIsland?: V3IslandSnapshot | null;
-  verifiedHeartAction?: (() => void) | null;
+  verifiedHeartAction?: (() => boolean | void) | null;
   verifiedActions?: V3IslandActionHandlers | null;
   verifiedProfile?: V3LivingProfile | null;
   verifiedSettlement?: V3LivingSettlementControls | null;
@@ -253,7 +253,7 @@ export interface LivingIslandScreenProps {
   notice?: string;
   noticeImportant?: boolean;
   onNoticeDismiss?: () => void;
-  onHeartClick: () => void;
+  onHeartClick: () => boolean | void;
   onStateChange: (result: ActionResult) => void;
   onRebirth: () => void;
 }
@@ -306,7 +306,7 @@ function VerifiedIslandPanel({
         <div
           className="living-rebirth-track"
           role="progressbar"
-          aria-label="Verified Rebirth progress"
+          aria-label="Live Rebirth progress"
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(progress)}
@@ -314,16 +314,16 @@ function VerifiedIslandPanel({
           <i style={{ width: `${progress}%` }} />
         </div>
         {!profile?.activeRun ? (
-          <p className="living-rebirth-locked" role="status">Open Verified account to authenticate and start a run.</p>
+          <p className="living-rebirth-locked" role="status">Open Live account to authenticate and start a run.</p>
         ) : !island ? (
-          <p className="living-rebirth-locked" role="status">Syncing verified island progress. Open Advanced / Activity if this takes too long.</p>
+          <p className="living-rebirth-locked" role="status">Syncing Live island progress. Open Advanced / Activity if this takes too long.</p>
         ) : canRebirth ? (
-          <p className="living-rebirth-ready" role="status">Rebirth is ready. Rewards settle from this verified run.</p>
+          <p className="living-rebirth-ready" role="status">Rebirth is ready. Rewards settle from this Live run.</p>
         ) : (
           <p className="living-rebirth-locked" role="status">
             {profile?.authenticated
               ? `Reach score tier ${rebirthGoal} to unlock Rebirth.`
-              : 'Authenticate this run to settle verified progress.'}
+              : 'Authenticate this run to settle Live progress.'}
           </p>
         )}
         <div className="living-rebirth-reward">
@@ -351,6 +351,7 @@ function VerifiedIslandPanel({
             {settlement?.pending ? 'Settling…' : <>Rebirth <span>→</span></>}
           </button>
         </div>
+        {settlement?.error && <p className="living-rebirth-locked" role="alert">{settlement.error}</p>}
       </article>
 
       <section className="living-shop" aria-labelledby="habitat-shop-title">
@@ -365,9 +366,9 @@ function VerifiedIslandPanel({
           <p className="living-verified-empty" role="status">
             {profile?.activeRun
               ? profile.authenticated
-                ? 'Syncing this run’s verified habitats. Open Advanced / Activity if this takes too long.'
+                ? 'Syncing this Live run’s habitats. Open Advanced / Activity if this takes too long.'
                 : 'Authenticate to load this run’s habitats.'
-              : 'Start a verified run to unlock its habitat shop.'}
+              : 'Start a Live run to unlock its habitat shop.'}
           </p>
         ) : (
           <div className="living-habitat-list">
@@ -386,7 +387,7 @@ function VerifiedIslandPanel({
                       type="button"
                       onClick={() => actions?.buyHabitat(habitat.id, 1)}
                       disabled={!actions || actions.pending || !habitat.canBuyOne}
-                      aria-label={`Buy 1 verified ${info.name}`}
+                      aria-label={`Buy 1 Live ${info.name}`}
                     >
                       +1 <small>{habitat.nextCost ?? '—'}</small>
                     </button>
@@ -394,14 +395,14 @@ function VerifiedIslandPanel({
                       type="button"
                       onClick={() => actions?.buyHabitat(habitat.id, habitat.maxAffordable)}
                       disabled={!actions || actions.pending || habitat.maxAffordable < 1}
-                      aria-label={`Buy maximum verified ${info.name}`}
+                      aria-label={`Buy maximum Live ${info.name}`}
                     >
                       Max
                     </button>
                   </div>
                   {habitat.productionUpgrades.length > 0 && (
                     <details className="living-habitat-upgrades">
-                      <summary aria-label={`${info.name} verified milestone upgrades`}>
+                      <summary aria-label={`${info.name} Live milestone upgrades`}>
                         Milestone upgrades <span>{habitat.purchasedUpgradeCount}/4</span>
                       </summary>
                       <div className="living-habitat-upgrade-list">
@@ -429,7 +430,7 @@ function VerifiedIslandPanel({
                           </div>
                         ))}
                       </div>
-                      <small className="living-habitat-upgrade-note">V2 run · sequential verified upgrades</small>
+                      <small className="living-habitat-upgrade-note">V2 Live run · sequential upgrades</small>
                     </details>
                   )}
                 </article>
@@ -465,7 +466,7 @@ function VerifiedIslandPanel({
           ))}
         </div>
         <p className="living-verified-empty">
-          Verified PP choices are applied when a run starts. Guest-only temporary boosts are unavailable here.
+          Live PP choices are applied when a run starts. Guest-only temporary boosts are unavailable here.
         </p>
       </article>
     </>
@@ -525,7 +526,7 @@ function LivingIsland({
   state: EconomyState;
   mode: LivingIslandMode;
   verifiedIsland: V3IslandSnapshot | null;
-  onHeartClick: (() => void) | null;
+  onHeartClick: (() => boolean | void) | null;
   actionPending?: boolean;
 }) {
   const isVerified = mode === 'verified';
@@ -558,8 +559,8 @@ function LivingIsland({
       aria-label={
         isVerified
           ? verifiedIsland
-            ? `Verified Living Island, ${stage} stage`
-            : 'Verified Living Island, waiting for an active run'
+            ? `Live Living Island, ${stage} stage`
+            : 'Live Living Island, waiting for an active run'
           : `Guest Living Island, ${stage} stage`
       }
     >
@@ -667,13 +668,12 @@ function LivingIsland({
         disabled={isVerified && (!onHeartClick || actionPending)}
         onClick={() => {
           if (!onHeartClick) return;
-          onHeartClick();
-          if (!isVerified) setHeartClicks((clicks) => clicks + 1);
+          if (onHeartClick() !== false) setHeartClicks((clicks) => clicks + 1);
         }}
         aria-label={
-          isVerified ? 'Click the verified Island Heart to collect 1 Nature' : 'Click the Island Heart to collect 1 Nature'
+          isVerified ? 'Click the Live Island Heart to collect 1 Nature' : 'Click the Island Heart to collect 1 Nature'
         }
-        title={isVerified ? 'Verified click · +1 Nature' : 'Click to collect +1 Nature'}
+        title={isVerified ? 'Live click · +1 Nature' : 'Click to collect +1 Nature'}
       >
         <span key={heartClicks} className="island-heart-sprite" aria-hidden="true" />
         {heartClicks > 0 && (
@@ -682,13 +682,13 @@ function LivingIsland({
           </span>
         )}
         <span className="island-heart-label">
-          {isVerified ? (actionPending ? 'Sending…' : 'Verified · Collect Nature') : 'Collect Nature'}
+          {isVerified ? 'Live • Collect Nature' : 'Collect Nature'}
         </span>
         <strong>+1</strong>
       </button>
       <div className="island-stage-info">
         <div className="island-stage-label">
-          <span /> {isVerified && !verifiedIsland ? 'Waiting for verified run' : stage}
+          <span /> {isVerified && !verifiedIsland ? 'Waiting for Live run' : stage}
         </div>
         {stageProgress && (
           <div
@@ -763,7 +763,7 @@ export function LivingIslandScreen({
                 aria-pressed={mode === 'verified'}
                 onClick={() => onModeChange('verified')}
               >
-                Verified
+                Live
               </button>
             </div>
           ) : (
@@ -790,9 +790,13 @@ export function LivingIslandScreen({
           <div className="living-island-column">
             <section className="living-resource-bar" aria-label="Island resources">
               <div className="living-resource living-resource--nature">
-                <span>{mode === 'verified' ? 'Verified Nature' : 'Guest Nature'}</span>
+                <span>{mode === 'verified' ? 'Live Nature · estimated' : 'Guest Nature'}</span>
                 <strong data-testid={mode === 'verified' ? 'verified-nature-counter' : 'nature-counter'}>
-                  {mode === 'verified' ? verifiedIsland?.nature ?? '—' : formatValue(state.nature)}
+                  {mode === 'verified'
+                    ? verifiedIsland
+                      ? `~${verifiedIsland.estimatedNature}`
+                      : '—'
+                    : formatValue(state.nature)}
                 </strong>
               </div>
               <div className="living-resource">
@@ -818,7 +822,11 @@ export function LivingIslandScreen({
               mode={mode}
               verifiedIsland={verifiedIsland}
               onHeartClick={mode === 'verified' ? verifiedHeartAction : onHeartClick}
-              actionPending={mode === 'verified' && Boolean(verifiedActions?.pending)}
+              actionPending={
+                mode === 'verified' &&
+                (Boolean(verifiedSettlement?.pending) ||
+                  Boolean(verifiedActions?.pending && !verifiedActions.heartClickPending))
+              }
             />
           </div>
           <aside className="living-control-panel" aria-label="Game controls">
@@ -1034,9 +1042,9 @@ export function LivingIslandScreen({
               </>
             ) : (
               <>
-                {(verifiedActions?.pending || verifiedSettlement?.pending) && (
+                {((verifiedActions?.pending && !verifiedActions.heartClickPending) || verifiedSettlement?.pending) && (
                   <p className="living-verified-pending" role="status" aria-live="polite">
-                    <i aria-hidden="true" /> Saving verified progress…
+                    <i aria-hidden="true" /> Syncing Live progress…
                   </p>
                 )}
                 <VerifiedIslandPanel
@@ -1053,7 +1061,7 @@ export function LivingIslandScreen({
         <footer className="living-footer">
           {mode === 'guest'
             ? `Guest progress is saved in this browser · simulated points are not wallet rewards · reset in ${timeUntil(nextSeasonStart)}`
-            : 'Verified progress is sourced from the V3 verifier and contract. Guest saves are separate.'}
+            : 'Live rewards are verifier-backed; Guest Nature and points are simulated. Progress stays separate.'}
         </footer>
       </main>
       {notice && (

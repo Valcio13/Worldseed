@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { valueFromNumber } from '../incremental/decimal';
 import { createEconomyState, type EconomyState } from '../incremental/engine';
 import { seasonIdAt } from '../incremental/season';
-import { LivingIslandGame } from './LivingIslandGame';
+import { initialLivingIslandMode, LivingIslandGame } from './LivingIslandGame';
 import * as islandAudio from '../game/sound';
 import { updateAudioPreferences } from '../game/sound';
 
@@ -41,6 +41,14 @@ afterEach(() => {
 });
 
 describe('Living Island guest persistence', () => {
+  it('defaults fresh production visitors to Live, keeps local development on Guest, and respects explicit preferences', () => {
+    expect(initialLivingIslandMode(null, true, true)).toBe('verified');
+    expect(initialLivingIslandMode(null, false, true)).toBe('guest');
+    expect(initialLivingIslandMode('guest', true, true)).toBe('guest');
+    expect(initialLivingIslandMode('live', true, true)).toBe('verified');
+    expect(initialLivingIslandMode('live', true, false)).toBe('guest');
+  });
+
   it('retries blocked startup music directly from the island Heart interaction', async () => {
     updateAudioPreferences({ musicEnabled: true, muted: false, musicVolume: 0.14 });
     mocks.loadGuestSave.mockResolvedValue({ kind: 'empty' });

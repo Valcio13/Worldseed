@@ -731,15 +731,15 @@
   animation: island-creature-breathe 3.2s ease-in-out infinite;
 }
 .island-creature--moss {
-  --creature-sprite-x: -144px;
+  --creature-sprite-x: -168px;
   --creature-walk-duration: 1250ms;
 }
 .island-creature--pip {
-  --creature-sprite-x: -192px;
+  --creature-sprite-x: -224px;
   --creature-walk-duration: 1450ms;
 }
 .island-creature--luma {
-  --creature-sprite-x: -240px;
+  --creature-sprite-x: -280px;
   --creature-walk-duration: 1650ms;
 }
 .island-creature--luma .island-creature-sprite {

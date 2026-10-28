@@ -145,6 +145,7 @@ describe('Living Island screen', () => {
     const verifiedHeartClick = vi.fn();
     const verifiedIsland = {
       nature: '456',
+      estimatedNature: '456',
       earnedNature: '600',
       productionPerSecond: '12',
       visualHabitatLevelCount: 5,
@@ -169,23 +170,60 @@ describe('Living Island screen', () => {
       />,
     );
 
-    expect(screen.getByTestId('verified-nature-counter')).toHaveTextContent('456');
+    expect(screen.getByTestId('verified-nature-counter')).toHaveTextContent('~456');
     expect(screen.getByText('600')).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Verified Living Island, growing stage' })).toHaveClass(
+    expect(screen.getByRole('region', { name: 'Live Living Island, growing stage' })).toHaveClass(
       'living-scene--growing',
     );
     expect(screen.getByRole('heading', { name: 'Habitat shop' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Rebirth' })).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Click the verified Island Heart to collect 1 Nature' }),
+      screen.getByRole('button', { name: 'Click the Live Island Heart to collect 1 Nature' }),
     );
     expect(verifiedHeartClick).toHaveBeenCalledOnce();
     expect(localHeartClick).not.toHaveBeenCalled();
-    expect(screen.queryByText('+1 Nature')).toBeNull();
+    expect(screen.getByText('+1 Nature')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Guest' })).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByRole('button', { name: 'Verified' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Live' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps Live Heart clicks enabled while queued Heart commands sync', () => {
+    const heart = vi.fn();
+    render(
+      <LivingIslandScreen
+        state={createEconomyState(1)}
+        mode="verified"
+        verifiedModeEnabled
+        verifiedIsland={{
+          nature: '1', estimatedNature: '1', earnedNature: '1', productionPerSecond: '0',
+          visualHabitatLevelCount: 0, scoreTier: 0, rulesVersion: 1, habitats: [],
+        }}
+        verifiedHeartAction={heart}
+        verifiedActions={{
+          pending: true,
+          heartClickPending: true,
+          pendingHeartClicks: 2,
+          buyHabitat: vi.fn(),
+          buyProductionUpgrade: vi.fn(),
+          flushPendingCommands: vi.fn(async () => undefined),
+        }}
+        nextSeasonStart={Date.UTC(2026, 10, 2)}
+        saveLabel="Saved"
+        onHeartClick={vi.fn()}
+        onStateChange={vi.fn()}
+        onRebirth={vi.fn()}
+      />,
+    );
+
+    const button = screen.getByRole('button', {
+      name: 'Click the Live Island Heart to collect 1 Nature',
+    });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(heart).toHaveBeenCalledOnce();
+    expect(screen.getByText('+1 Nature')).toBeInTheDocument();
   });
 
   it('routes verified habitat purchases to V3 and never touches the guest economy handler', () => {
@@ -197,6 +235,7 @@ describe('Living Island screen', () => {
         mode="verified"
         verifiedIsland={{
           nature: '456',
+          estimatedNature: '456',
           earnedNature: '600',
           productionPerSecond: '12',
           visualHabitatLevelCount: 1,
@@ -209,8 +248,11 @@ describe('Living Island screen', () => {
         }}
         verifiedActions={{
           pending: false,
+          heartClickPending: false,
+          pendingHeartClicks: 0,
           buyHabitat,
           buyProductionUpgrade: vi.fn(),
+          flushPendingCommands: vi.fn(async () => undefined),
         }}
         nextSeasonStart={Date.UTC(2026, 10, 2)}
         saveLabel="Saved"
@@ -220,7 +262,7 @@ describe('Living Island screen', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Buy 1 verified Water' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Buy 1 Live Water' }));
     expect(buyHabitat).toHaveBeenCalledWith('water', 1);
     expect(onStateChange).not.toHaveBeenCalled();
     expect(screen.getByTestId('verified-nature-counter')).toHaveTextContent('456');

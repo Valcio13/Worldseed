@@ -34,12 +34,34 @@ import type { V3IslandActionHandlers } from '../v3/components/V3VerifiedGameplay
 import './LivingIsland.css';
 import { islandGrowthStage } from './islandGrowthStage';
 
+const MODE_PREFERENCE_KEY = 'worldseed:play-mode:v1';
+
+export function initialLivingIslandMode(
+  savedPreference: string | null,
+  isProduction: boolean,
+  liveEnabled: boolean,
+): LivingIslandMode {
+  if (savedPreference === 'guest') return 'guest';
+  if ((savedPreference === 'live' || savedPreference === 'verified') && liveEnabled)
+    return 'verified';
+  return isProduction && liveEnabled ? 'verified' : 'guest';
+}
+
+function readModePreference(): string | null {
+  try {
+    return window.localStorage.getItem(MODE_PREFERENCE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function LivingIslandGame() {
   const account = useAccount();
   const chainId = useChainId();
   const { connectAsync, connectors, isPending: connecting } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChainAsync, isPending: switching } = useSwitchChain();
+  const verifiedModeEnabled = isV3IdleIntegrationEnabled();
   const [economy, setEconomy] = useState<EconomyState>(() =>
     createEconomyState(seasonIdAt(Date.now())),
   );
@@ -54,9 +76,11 @@ export function LivingIslandGame() {
   const noticeIdRef = useRef(0);
   const [saveDecision, setSaveDecision] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const [mode, setMode] = useState<LivingIslandMode>('guest');
+  const [mode, setMode] = useState<LivingIslandMode>(() =>
+    initialLivingIslandMode(readModePreference(), import.meta.env.PROD, verifiedModeEnabled),
+  );
   const [verifiedIsland, setVerifiedIsland] = useState<V3IslandSnapshot | null>(null);
-  const [verifiedHeartAction, setVerifiedHeartAction] = useState<(() => void) | null>(null);
+  const [verifiedHeartAction, setVerifiedHeartAction] = useState<(() => boolean) | null>(null);
   const [verifiedActions, setVerifiedActions] = useState<V3IslandActionHandlers | null>(null);
   const [verifiedProfile, setVerifiedProfile] = useState<V3LivingProfile | null>(null);
   const [verifiedSettlement, setVerifiedSettlement] = useState<V3LivingSettlementControls | null>(null);
@@ -64,7 +88,6 @@ export function LivingIslandGame() {
   const legacyRestorationRef = useRef<ReturnType<typeof createGameState> | undefined>(undefined);
   const lastCheckpointRef = useRef<number | null>(null);
   const nextSeasonStart = seasonStartAt(economy.seasonId + 1);
-  const verifiedModeEnabled = isV3IdleIntegrationEnabled();
 
   function showNotice(message: string, important = false) {
     setNotice({ id: ++noticeIdRef.current, message, important });
@@ -256,18 +279,32 @@ export function LivingIslandGame() {
       setVerifiedSettlement(null);
     }
     setMode(nextMode);
+    try {
+      window.localStorage.setItem(MODE_PREFERENCE_KEY, nextMode === 'verified' ? 'live' : 'guest');
+    } catch {
+      // A mode preference is optional; guest and Live progression remain separate either way.
+    }
   }
 
-  const acceptVerifiedHeartAction = useCallback((action: (() => void) | null) => {
+  const acceptVerifiedHeartAction = useCallback((action: (() => boolean) | null) => {
     setVerifiedHeartAction(() => action);
+  }, []);
+
+  const acceptVerifiedIsland = useCallback((next: V3IslandSnapshot | null) => {
+    setVerifiedIsland((previous) =>
+      JSON.stringify(previous) === JSON.stringify(next) ? previous : next,
+    );
   }, []);
 
   const acceptVerifiedActions = useCallback((next: V3IslandActionHandlers | null) => {
     setVerifiedActions((previous) => {
       if (
         previous?.pending === next?.pending &&
+        previous?.heartClickPending === next?.heartClickPending &&
+        previous?.pendingHeartClicks === next?.pendingHeartClicks &&
         previous?.buyHabitat === next?.buyHabitat &&
-        previous?.buyProductionUpgrade === next?.buyProductionUpgrade
+        previous?.buyProductionUpgrade === next?.buyProductionUpgrade &&
+        previous?.flushPendingCommands === next?.flushPendingCommands
       ) return previous;
       return next;
     });
@@ -306,7 +343,7 @@ export function LivingIslandGame() {
         verifiedProgression={
           verifiedModeEnabled && mode === 'verified' ? (
             <V3IslandProgression
-              onSnapshotChange={setVerifiedIsland}
+              onSnapshotChange={acceptVerifiedIsland}
               onHeartActionReady={acceptVerifiedHeartAction}
               onActionHandlersReady={acceptVerifiedActions}
               onProfileChange={acceptVerifiedProfile}

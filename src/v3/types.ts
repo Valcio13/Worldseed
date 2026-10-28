@@ -175,6 +175,10 @@ export interface V3CommandQueueState {
   isSubmitting: boolean;
   /** Recovery state if needed */
   recoveringCursor: boolean;
+  /** Repeatable Heart clicks captured locally while a prior command is in flight. */
+  queuedHeartClicks: number;
+  /** A definite server rejection blocks automatic replay until the player resolves it. */
+  heartQueueBlocked?: boolean;
   /** Last error from recovery attempt */
   recoveryError?: string;
   // Computed properties (added by hook)

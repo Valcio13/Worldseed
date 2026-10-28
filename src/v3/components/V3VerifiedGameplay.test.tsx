@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createCanonicalRun,
   NATURE_SCALE,
+  seasonEndAtMilliseconds,
   seasonIdAtMilliseconds,
   serializeCanonicalRun,
   type CanonicalRunState,
@@ -24,6 +25,9 @@ const submitCommandMock = vi.fn();
 const recoverStateMock = vi.fn();
 const retryCommandMock = vi.fn();
 const clearCompletedMock = vi.fn();
+const enqueueHeartClickMock = vi.fn(() => true);
+const discardQueuedHeartClicksMock = vi.fn();
+const flushPendingCommandsMock = vi.fn(async () => undefined);
 const snapshotChangeMock = vi.fn();
 const heartActionReadyMock = vi.fn();
 const actionHandlersReadyMock = vi.fn();
@@ -66,6 +70,8 @@ function queueState(commands: V3CommandQueueState['commands'] = []): V3CommandQu
     sessionToken: token,
     isSubmitting: false,
     recoveringCursor: false,
+    queuedHeartClicks: 0,
+    heartQueueBlocked: false,
     pendingCount: 0,
     confirmedCount: 0,
     failedCount: commands.filter(command => command.status === 'failed').length,
@@ -79,6 +85,9 @@ function renderVerified(commands: V3CommandQueueState['commands'] = []) {
     retryCommand: retryCommandMock,
     recoverState: recoverStateMock,
     clearCompleted: clearCompletedMock,
+    enqueueHeartClick: enqueueHeartClickMock,
+    discardQueuedHeartClicks: discardQueuedHeartClicksMock,
+    flushPendingCommands: flushPendingCommandsMock,
   });
   return render(
     <V3VerifiedGameplay
@@ -101,7 +110,10 @@ beforeEach(() => {
   });
   submitCommandMock.mockResolvedValue('verified-command-id');
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe('verified Living Island adapter', () => {
   it('parses a V2 snapshot through the version-aware helper', () => {
@@ -116,6 +128,7 @@ describe('verified Living Island adapter', () => {
     await waitFor(() =>
       expect(snapshotChangeMock).toHaveBeenLastCalledWith({
         nature: '100',
+        estimatedNature: '100',
         earnedNature: '100',
         productionPerSecond: '0',
         visualHabitatLevelCount: 0,
@@ -134,7 +147,113 @@ describe('verified Living Island adapter', () => {
     const heartAction = heartActionReadyMock.mock.calls.at(-1)?.[0] as (() => void) | null;
     expect(heartAction).toBeTypeOf('function');
     heartAction?.();
-    await waitFor(() => expect(submitCommandMock).toHaveBeenCalledWith({ type: 'heart-click' }));
+    await waitFor(() => expect(enqueueHeartClickMock).toHaveBeenCalledOnce());
+  });
+
+  it('projects confirmed passive production for display without changing the confirmed Nature balance', async () => {
+    const state = {
+      ...canonicalState(),
+      natureAtoms: 100n * NATURE_SCALE,
+      habitats: { ...canonicalState().habitats, water: 1 },
+      lastServerTimeMs: Date.now() - 2_000,
+    };
+    recoverStateMock.mockResolvedValueOnce({
+      cursor: { runId, sequence: 0, rulesVersion: 1 },
+      canonicalState: serializeCanonicalRun(state),
+      scoreTier: 0,
+      wallet,
+    });
+    renderVerified();
+
+    await waitFor(() => expect(snapshotChangeMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ nature: '100', estimatedNature: expect.any(String) }),
+    ));
+    const snapshot = snapshotChangeMock.mock.calls.at(-1)?.[0];
+    expect(Number(snapshot.nature)).toBe(100);
+    expect(Number(snapshot.estimatedNature)).toBeGreaterThan(100);
+  });
+
+  it('stops the passive Nature estimate at the run season boundary', async () => {
+    const base = canonicalState();
+    const seasonEnd = seasonEndAtMilliseconds(base.seasonId);
+    vi.spyOn(Date, 'now').mockReturnValue(seasonEnd + 5_000);
+    const state = {
+      ...base,
+      natureAtoms: 100n * NATURE_SCALE,
+      habitats: { ...base.habitats, water: 1 },
+      lastServerTimeMs: seasonEnd - 2_000,
+    };
+    recoverStateMock.mockResolvedValueOnce({
+      cursor: { runId, sequence: 0, rulesVersion: 1 },
+      canonicalState: serializeCanonicalRun(state),
+      scoreTier: 0,
+      wallet,
+    });
+    renderVerified();
+
+    await waitFor(() => expect(snapshotChangeMock).toHaveBeenCalled());
+    const snapshot = snapshotChangeMock.mock.calls.at(-1)?.[0];
+    expect(Number(snapshot.nature)).toBe(100);
+    expect(Number(snapshot.estimatedNature)).toBeLessThanOrEqual(102.1);
+  });
+
+  it('updates the island snapshot from a confirmed habitat receipt without a second recovery request', async () => {
+    const view = renderVerified();
+    await waitFor(() => expect(snapshotChangeMock).toHaveBeenCalled());
+    const boughtState = {
+      ...canonicalState(),
+      sequence: 1,
+      natureAtoms: 90n * NATURE_SCALE,
+      habitats: { ...canonicalState().habitats, water: 1 },
+      lastServerTimeMs: Date.now(),
+    };
+    const command = {
+      commandId: 'confirmed-water-buy',
+      payload: { type: 'buy-habitat' as const, habitat: 'water' as const, quantity: 1 },
+      expectedSequence: 0,
+      submittedAt: Date.now(),
+      status: 'confirmed' as const,
+      receipt: {
+        accepted: true,
+        commandId: 'confirmed-water-buy',
+        cursor: { runId, sequence: 1, rulesVersion: 1 },
+        serverTimeMs: Date.now(),
+        canonicalState: serializeCanonicalRun(boughtState),
+        creditedAtoms: '0',
+        spentAtoms: (10n * NATURE_SCALE).toString(),
+        scoreTier: 0,
+      },
+    };
+    const confirmedQueue = queueState([command]);
+    confirmedQueue.cursor.currentSequence = 1;
+    confirmedQueue.cursor.expectedSequence = 1;
+    useV3CommandsMock.mockReturnValue({
+      state: confirmedQueue,
+      submitCommand: submitCommandMock,
+      retryCommand: retryCommandMock,
+      recoverState: recoverStateMock,
+      clearCompleted: clearCompletedMock,
+      enqueueHeartClick: enqueueHeartClickMock,
+      discardQueuedHeartClicks: discardQueuedHeartClicksMock,
+      flushPendingCommands: flushPendingCommandsMock,
+    });
+    view.rerender(
+      <V3VerifiedGameplay
+        runId={runId}
+        sessionToken={token}
+        onSnapshotChange={snapshotChangeMock}
+        onHeartActionReady={heartActionReadyMock}
+        onActionHandlersReady={actionHandlersReadyMock}
+      />,
+    );
+
+    await waitFor(() => expect(snapshotChangeMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        nature: '90',
+        habitats: expect.arrayContaining([expect.objectContaining({ id: 'water', level: 1 })]),
+      }),
+    ));
+    expect(recoverStateMock).toHaveBeenCalledOnce();
   });
 
   it('publishes V1 habitat state and routes purchases through verified commands', async () => {

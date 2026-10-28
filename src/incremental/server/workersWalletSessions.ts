@@ -9,9 +9,10 @@ import {
 import type { AuthenticatedWalletSession } from '../verifierProtocol';
 import type { WalletSessionAuthenticator } from '../localVerifier';
 import type { WalletChallengeRow, WalletSessionStore } from './verifierStoreTypes';
+import { V3_WALLET_SESSION_TTL_MS } from './walletSessionPolicy';
 
 const CHALLENGE_TTL_MS = 5 * 60_000;
-const SESSION_TTL_MS = 15 * 60_000;
+const SESSION_TTL_MS = V3_WALLET_SESSION_TTL_MS;
 const UINT64_MAX = (1n << 64n) - 1n;
 
 export interface WalletChallengeRequest {

@@ -59,6 +59,7 @@ describe('wallet challenge and session security', () => {
     const failures = [first, second].filter((result) => 'error' in result);
     expect(successes).toHaveLength(1);
     expect(failures).toHaveLength(1);
+    expect(successes[0]!.value!.expiresAtMs - now.value).toBe(4 * 60 * 60 * 1_000);
     const token = successes[0]!.value!.sessionToken;
     expect(await sessions.authenticate(token)).toMatchObject({
       wallet: disposableWallet.address,

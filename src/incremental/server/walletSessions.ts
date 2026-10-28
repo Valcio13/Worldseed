@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { getAddress, hashMessage, isAddress, recoverMessageAddress, type Hex } from 'viem';
 import type { AuthenticatedWalletSession } from '../verifierProtocol';
 import type { WalletSessionAuthenticator } from '../localVerifier';
+import { V3_WALLET_SESSION_TTL_MS } from './walletSessionPolicy';
 import {
   SqliteVerifierStore,
   type WalletChallengeRow,
@@ -9,7 +10,7 @@ import {
 } from './sqliteVerifierStore';
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1_000;
-const SESSION_TTL_MS = 15 * 60 * 1_000;
+const SESSION_TTL_MS = V3_WALLET_SESSION_TTL_MS;
 const UINT64_MAX = (1n << 64n) - 1n;
 
 export interface WalletChallengeRequest {

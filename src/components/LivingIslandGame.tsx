@@ -390,6 +390,7 @@ export function LivingIslandGame() {
         verifiedProgression={
           verifiedModeEnabled && mode === 'verified' ? (
             <V3IslandProgression
+              onSwitchToGuest={() => changeMode('guest')}
               onSnapshotChange={acceptVerifiedIsland}
               onHeartActionReady={acceptVerifiedHeartAction}
               onActionHandlersReady={acceptVerifiedActions}

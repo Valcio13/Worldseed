@@ -193,6 +193,24 @@ describe('Living Island verified controls', () => {
     expect(connectAsync).toHaveBeenCalledWith({ connector: { id: 'injected' } });
   });
 
+  it('prompts to reconnect a disconnected Live wallet and offers Guest mode', () => {
+    const address = '0x0000000000000000000000000000000000000001';
+    const onSwitchToGuest = vi.fn();
+    useV3AuthMock.mockReturnValue(authState({
+      wallet: address,
+      isAuthenticated: true,
+      sessionToken: 'retained-session',
+    }));
+
+    render(<V3IslandProgression {...callbacks()} onSwitchToGuest={onSwitchToGuest} />);
+
+    expect(screen.getByRole('dialog', { name: 'Reconnect your wallet' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Reconnect wallet' }));
+    expect(connectAsync).toHaveBeenCalledWith({ connector: { id: 'injected' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue as Guest' }));
+    expect(onSwitchToGuest).toHaveBeenCalledOnce();
+  });
+
   it('opens Start Run in a dedicated scrollable dialog instead of the account dropdown', () => {
     const address = '0x0000000000000000000000000000000000000001';
     useV3RunMock.mockReturnValue(runState({
@@ -213,7 +231,7 @@ describe('Living Island verified controls', () => {
     expect(screen.getByRole('dialog', { name: 'Prepare your run' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Start Verified Run →' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Close Start Run dialog' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Prepare your run' })).toBeNull();
   });
 
   it('ends authentication and disconnects only after the player explicitly requests it', () => {

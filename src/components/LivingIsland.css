@@ -424,6 +424,14 @@
     8px 0 0 #987249;
   opacity: 0.72;
 }
+.island-ground-decoration-layer {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
 .island-edge-detail--1 {
   left: 17%;
   top: 18%;

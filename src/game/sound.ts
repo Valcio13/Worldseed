@@ -22,8 +22,8 @@ const STORAGE_KEY = 'worldseed:audio-preferences:v1';
 const LEGACY_SOUND_KEY = 'worldseed:sound';
 const MUSIC_DISABLED_KEY = 'worldseed:music-explicitly-disabled:v1';
 const DEFAULT_PREFERENCES: AudioPreferences = {
-  musicVolume: 0.14,
-  sfxVolume: 0.42,
+  musicVolume: 0.15,
+  sfxVolume: 1,
   muted: false,
   musicEnabled: true,
 };

@@ -1,14 +1,14 @@
 # Non-deployable template. Copy to wrangler.v3-verifier.mainnet.toml after
 # creating a separate mainnet D1 database and replacing its database ID.
 name = "worldseed-v3-verifier-mainnet"
-main = "src/incremental/worker/index.ts"
+main = "../../src/incremental/worker/index.ts"
 compatibility_date = "2026-10-14"
 
 [[d1_databases]]
 binding = "WORLDSEED_DB"
 database_name = "worldseed-v3-verifier-mainnet"
-database_id = "6c913bbe-5e5f-4adc-b402-f71b53440b1e"
-migrations_dir = "migrations"
+database_id = "REPLACE_AFTER_CREATING_MAINNET_D1"
+migrations_dir = "../../migrations"
 
 [vars]
 V3_CHAIN_ID = "43111"

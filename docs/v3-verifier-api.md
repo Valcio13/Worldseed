@@ -33,7 +33,7 @@ Before the first run, the frontend reads the connected chain ID, the configured 
 { "challengeId": "<uuid>", "signature": "0x..." }
 ```
 
-Success returns `{ "sessionToken": "<opaque bearer token>", "expiresAtMs": 0 }`. The token is valid for 15 minutes, is returned once, and only its SHA-256 digest is persisted. The challenge is single-use and expires after five minutes. Include `Authorization: Bearer <sessionToken>` on all following requests. Sessions are bound to wallet, chain, contract, run, and origin.
+Success returns `{ "sessionToken": "<opaque bearer token>", "expiresAtMs": 0 }`. The token is valid for four hours, is returned once, and only its SHA-256 digest is persisted. The challenge is single-use and expires after five minutes. Include `Authorization: Bearer <sessionToken>` on all following requests. Sessions are bound to wallet, chain, contract, run, and origin.
 
 ## Start Run
 

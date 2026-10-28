@@ -1,12 +1,12 @@
 name = "worldseed-v3-verifier"
-main = "src/incremental/worker/index.ts"
+main = "../../src/incremental/worker/index.ts"
 compatibility_date = "2026-10-14"
 
 [[d1_databases]]
 binding = "WORLDSEED_DB"
 database_name = "worldseed-v3-verifier"
 database_id = "ee1ad74e-74a9-4935-afd3-5ccfda0c3f8e"
-migrations_dir = "migrations"
+migrations_dir = "../../migrations"
 
 [vars]
 V3_CHAIN_ID = "743111"

@@ -218,6 +218,30 @@ export function useV3Auth() {
   useEffect(() => {
     const walletChanged = account.address !== prevAccountRef.current;
     const chainChanged = chainId !== TARGET_CHAIN_ID;
+    const detachedSession = !account.address ? inMemorySession ?? readStoredSession() : null;
+
+    // A provider disconnect is recoverable: keep the run-bound bearer session
+    // alive until it expires so reconnecting the same wallet can resume it.
+    // Explicit in-app disconnect calls logout first and clears this session.
+    if (
+      !account.address &&
+      account.status === 'disconnected' &&
+      !chainChanged &&
+      detachedSession &&
+      detachedSession.chainId === chainId &&
+      detachedSession.verifyingContract === v3ContractAddress?.toLowerCase()
+    ) {
+      if (!inMemorySession) cacheInMemorySession(detachedSession);
+      if (detachedSession.sessionToken) scheduleSessionExpiration(detachedSession.expiresAtMs);
+      const detachedState = authStateFromSession(detachedSession, isConfigured, isCorrectChain);
+      if (
+        state.sessionToken !== detachedState.sessionToken ||
+        state.wallet !== detachedState.wallet
+      ) setState(detachedState);
+      prevAccountRef.current = null;
+      return;
+    }
+
     const cached = readInMemorySession(account.address, chainId);
 
     // During page refresh/provider reconnect the wallet can be temporarily
@@ -262,7 +286,7 @@ export function useV3Auth() {
       isConfigured,
       isCorrectChain,
     }));
-  }, [account.address, account.status, chainId, isConfigured, isCorrectChain, scheduleSessionExpiration, state.isAuthenticated, state.sessionToken]);
+  }, [account.address, account.status, chainId, isConfigured, isCorrectChain, scheduleSessionExpiration, state.isAuthenticated, state.sessionToken, state.wallet]);
 
   // Clean up timer on unmount
   useEffect(() => {

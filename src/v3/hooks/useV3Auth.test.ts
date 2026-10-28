@@ -476,6 +476,14 @@ describe('useV3Auth', () => {
       });
       expect(window.sessionStorage.length).toBe(1);
 
+      vi.mocked(useAccount).mockReturnValue({ address: null, status: 'disconnected' } as never);
+      rerender();
+
+      expect(result.current.isAuthenticated).toBe(true);
+      expect(result.current.sessionToken).toBe(mockSessionToken);
+      expect(result.current.wallet).toBe(mockWallet);
+      expect(window.sessionStorage.length).toBe(1);
+
       vi.mocked(useAccount).mockReturnValue({
         address: '0x1111111111111111111111111111111111111111',
         status: 'connected',

@@ -266,6 +266,27 @@ details[open]::details-content {
   box-shadow: 0 12px 32px rgb(0 0 0 / 36%);
 }
 
+:root[data-theme='dark'] .v3-wallet-reconnect-dialog {
+  border-color: #a8955d;
+  color: #f1f1e6;
+  background: #203b2e;
+}
+
+:root[data-theme='dark'] .v3-wallet-reconnect-eyebrow {
+  color: #b7cc94;
+}
+
+:root[data-theme='dark'] .v3-wallet-reconnect-dialog button {
+  border-color: #789375;
+  color: #f1f1e6;
+  background: #426b50;
+}
+
+:root[data-theme='dark'] .v3-wallet-reconnect-dialog .v3-wallet-reconnect-guest {
+  color: #e0eadc;
+  background: #2e4a39;
+}
+
 :root[data-theme='dark'] .v3-living-account-panel button,
 :root[data-theme='dark'] .v3-advanced-panel button {
   border-color: var(--living-sage);

@@ -55,12 +55,14 @@ export function V3IslandProgression({
   onActionHandlersReady,
   onProfileChange,
   onSettlementControlsReady,
+  onSwitchToGuest,
 }: {
   onSnapshotChange: (snapshot: V3IslandSnapshot | null) => void;
   onHeartActionReady: (action: (() => boolean) | null) => void;
   onActionHandlersReady: (handlers: V3IslandActionHandlers | null) => void;
   onProfileChange: (profile: V3LivingProfile | null) => void;
   onSettlementControlsReady: (controls: V3LivingSettlementControls | null) => void;
+  onSwitchToGuest?: () => void;
 }) {
   return <VerifiedProgression
     onSnapshotChange={onSnapshotChange}
@@ -68,6 +70,7 @@ export function V3IslandProgression({
     onActionHandlersReady={onActionHandlersReady}
     onProfileChange={onProfileChange}
     onSettlementControlsReady={onSettlementControlsReady}
+    onSwitchToGuest={onSwitchToGuest}
   />;
 }
 
@@ -77,12 +80,14 @@ function VerifiedProgression({
   onActionHandlersReady,
   onProfileChange,
   onSettlementControlsReady,
+  onSwitchToGuest,
 }: {
   onSnapshotChange: (snapshot: V3IslandSnapshot | null) => void;
   onHeartActionReady: (action: (() => boolean) | null) => void;
   onActionHandlersReady: (handlers: V3IslandActionHandlers | null) => void;
   onProfileChange: (profile: V3LivingProfile | null) => void;
   onSettlementControlsReady: (controls: V3LivingSettlementControls | null) => void;
+  onSwitchToGuest?: () => void;
 }) {
   const runState = useV3Run();
   const auth = useV3Auth();
@@ -325,8 +330,40 @@ function VerifiedProgression({
       ? `Switch to ${TARGET_NETWORK_LABEL}`
       : `Disconnect ${runState.wallet.slice(0, 6)}…${runState.wallet.slice(-4)}`;
 
+  const walletReconnectRequired =
+    walletAccount.status === 'disconnected' &&
+    Boolean(auth.wallet && (auth.isAuthenticated || auth.error === 'Session expired'));
+
   return (
     <div className="v3-living-tools">
+      {walletReconnectRequired && (
+        <div className="v3-wallet-reconnect-backdrop">
+          <section
+            className="v3-wallet-reconnect-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="v3-wallet-reconnect-title"
+          >
+            <span className="v3-wallet-reconnect-eyebrow">LIVE RUN PAUSED</span>
+            <h2 id="v3-wallet-reconnect-title">Reconnect your wallet</h2>
+            <p>
+              {auth.isAuthenticated
+                ? 'Your Live session is still available. Reconnect the same wallet to resume this run.'
+                : 'Reconnect the same wallet, then sign in again to resume this run.'}
+            </p>
+            <button type="button" onClick={() => void handleWalletAction()} disabled={walletBusy}>
+              {walletBusy ? 'Reconnecting…' : 'Reconnect wallet'}
+            </button>
+            <button
+              type="button"
+              className="v3-wallet-reconnect-guest"
+              onClick={onSwitchToGuest}
+            >
+              Continue as Guest
+            </button>
+          </section>
+        </div>
+      )}
       <details className="v3-living-account">
         <summary>
           {runState.wallet ? `${runState.wallet.slice(0, 6)}…${runState.wallet.slice(-4)}` : 'Live account'}

@@ -653,23 +653,25 @@ function LivingIsland({
             data-testid="island-edge-detail"
           />
         ))}
-        {Array.from({ length: visibleFlora }, (_, index) => {
-          const file =
-            index % 3 === 0
-              ? 'flower-yellow.png'
-              : index % 3 === 1
-                ? 'flower-white.png'
-                : 'mushroom-redcap.png';
-          return (
-            <img
-              key={`flora-${index}`}
-              className={`island-sprout island-sprout--${index + 1}`}
-              src={`${CRAFTPIX_ASSET_ROOT}${file}`}
-              alt=""
-              data-craftpix-sprite={file}
-            />
-          );
-        })}
+        <div className="island-ground-decoration-layer">
+          {Array.from({ length: visibleFlora }, (_, index) => {
+            const file =
+              index % 3 === 0
+                ? 'flower-yellow.png'
+                : index % 3 === 1
+                  ? 'flower-white.png'
+                  : 'mushroom-redcap.png';
+            return (
+              <img
+                key={`flora-${index}`}
+                className={`island-sprout island-sprout--${index + 1}`}
+                src={`${CRAFTPIX_ASSET_ROOT}${file}`}
+                alt=""
+                data-craftpix-sprite={file}
+              />
+            );
+          })}
+        </div>
         {Array.from({ length: visibleTrees }, (_, index) => (
           <img
             key={index}
@@ -679,19 +681,21 @@ function LivingIsland({
             data-craftpix-sprite={index % 2 ? 'pine-tree-thin.png' : 'pine-tree-small.png'}
           />
         ))}
-        {Array.from({ length: visibleStones }, (_, index) => (
-          <i key={`stone-${index}`} className={`island-stone island-stone--${index + 1}`} />
-        ))}
-        {CRAFTPIX_STAGE_DECORATIONS[stage].map(({ file, placement }) => (
-          <img
-            key={placement}
-            className={`craftpix-decoration craftpix-decoration--${placement}`}
-            src={`${CRAFTPIX_ASSET_ROOT}${file}`}
-            alt=""
-            aria-hidden="true"
-            data-craftpix-sprite={file}
-          />
-        ))}
+        <div className="island-ground-decoration-layer">
+          {Array.from({ length: visibleStones }, (_, index) => (
+            <i key={`stone-${index}`} className={`island-stone island-stone--${index + 1}`} />
+          ))}
+          {CRAFTPIX_STAGE_DECORATIONS[stage].map(({ file, placement }) => (
+            <img
+              key={placement}
+              className={`craftpix-decoration craftpix-decoration--${placement}`}
+              src={`${CRAFTPIX_ASSET_ROOT}${file}`}
+              alt=""
+              aria-hidden="true"
+              data-craftpix-sprite={file}
+            />
+          ))}
+        </div>
         {stage === 'flourishing' && (
           <div className="island-campsite" data-testid="island-campsite" aria-hidden="true">
             <img src="/assets/environment/living-island-campsite.png" alt="" />

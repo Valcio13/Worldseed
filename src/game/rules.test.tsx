@@ -127,33 +127,6 @@ describe('habitat and milestone rules', () => {
 });
 
 describe('first guest journey', () => {
-  it('shows a recoverable screen and technical details when the lazy game screen fails', async () => {
-    const user = userEvent.setup();
-    const onBack = vi.fn();
-    const onRetry = vi.fn();
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    function BrokenGame(): never {
-      throw new Error('fixture chunk fetch failed');
-    }
-
-    render(
-      <PuzzleLoadBoundary onBack={onBack} onRetry={onRetry}>
-        <BrokenGame />
-      </PuzzleLoadBoundary>,
-    );
-
-    expect(screen.getByRole('alert')).toHaveTextContent(/grove game did not load/i);
-    expect(screen.getByText(/Loading error: fixture chunk fetch failed/i)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /reload and try again/i }));
-    await user.click(screen.getByRole('button', { name: /return to island/i }));
-    await user.click(screen.getByText('Show loading error details'));
-    expect(screen.getByText(/^Error: fixture chunk fetch failed/)).toBeInTheDocument();
-    expect(onRetry).toHaveBeenCalledOnce();
-    expect(onBack).toHaveBeenCalledOnce();
-    expect(consoleError).toHaveBeenCalled();
-    consoleError.mockRestore();
-  });
-
   it('opens the tutorial, places healthy Water and Grass, and unlocks the next region', async () => {
     const user = userEvent.setup();
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });

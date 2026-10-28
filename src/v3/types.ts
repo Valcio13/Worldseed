@@ -177,6 +177,8 @@ export interface V3CommandQueueState {
   recoveringCursor: boolean;
   /** Repeatable Heart clicks captured locally while a prior command is in flight. */
   queuedHeartClicks: number;
+  /** Persisted first-click deadline so a queued batch survives refreshes. */
+  heartBatchDueAt?: number | null;
   /** A definite server rejection blocks automatic replay until the player resolves it. */
   heartQueueBlocked?: boolean;
   /** Last error from recovery attempt */
@@ -227,7 +229,7 @@ export type V3HabitatKind =
 export type V3HabitatUpgradeMilestone = 10 | 25 | 50 | 100;
 
 export type V3GameplayCommand =
-  | { type: 'heart-click' }
+  | { type: 'heart-click'; quantity?: number }
   | { type: 'sync' }
   | { type: 'buy-habitat'; habitat: V3HabitatKind; quantity: number }
   | {

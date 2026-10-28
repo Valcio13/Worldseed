@@ -7,6 +7,7 @@ const {
   useV3AuthMock,
   useStartRunFlowMock,
   useV3SettlementMock,
+  useAccountMock,
   useConnectMock,
   useDisconnectMock,
   useSwitchChainMock,
@@ -16,6 +17,7 @@ const {
   useV3AuthMock: vi.fn(),
   useStartRunFlowMock: vi.fn(),
   useV3SettlementMock: vi.fn(),
+  useAccountMock: vi.fn(),
   useConnectMock: vi.fn(),
   useDisconnectMock: vi.fn(),
   useSwitchChainMock: vi.fn(),
@@ -36,6 +38,7 @@ vi.mock('wagmi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('wagmi')>();
   return {
     ...actual,
+    useAccount: useAccountMock,
     useConnect: useConnectMock,
     useDisconnect: useDisconnectMock,
     useSwitchChain: useSwitchChainMock,
@@ -130,6 +133,7 @@ beforeEach(() => {
     status: 'idle', action: null, transactionHash: null, error: null,
     canSettle: false, recordPoints: vi.fn(), rebirth: vi.fn(),
   });
+  useAccountMock.mockReturnValue({ status: 'disconnected' });
   useConnectMock.mockReturnValue({ connectAsync, connectors: [{ id: 'injected' }], isPending: false });
   useDisconnectMock.mockReturnValue({ disconnect });
   useSwitchChainMock.mockReturnValue({ switchChainAsync, isPending: false });
@@ -138,6 +142,30 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('Living Island verified controls', () => {
+  it('shows when the saved wallet connection is being restored after refresh', () => {
+    useAccountMock.mockReturnValue({ status: 'reconnecting' });
+    renderProgression();
+    fireEvent.click(screen.getByText('Live account'));
+    expect(screen.getByRole('status')).toHaveTextContent('Restoring the wallet connection');
+    expect(screen.getByRole('button', { name: 'Restoring wallet…' })).toBeDisabled();
+    expect(connectAsync).not.toHaveBeenCalled();
+  });
+
+  it('offers an explicit new sign in when the verifier session expired', () => {
+    useV3RunMock.mockReturnValue(runState({
+      wallet: '0x0000000000000000000000000000000000000001',
+      runId: 7n,
+      run: { status: 'ACTIVE' },
+    }));
+    useV3AuthMock.mockReturnValue(authState({
+      error: 'Session expired',
+      canAuthenticate: true,
+    }));
+    renderProgression();
+    fireEvent.click(document.querySelector('.v3-living-account summary')!);
+    expect(screen.getByRole('button', { name: 'Sign in again' })).toBeEnabled();
+  });
+
   it('keeps wallet controls and technical activity compact and collapsible', () => {
     const { container } = renderProgression();
     expect(container.querySelector('.v3-living-account')?.hasAttribute('open')).toBe(false);
@@ -146,13 +174,13 @@ describe('Living Island verified controls', () => {
 
     fireEvent.click(screen.getByText('Advanced / Activity'));
     expect(screen.getByText('Technical run status')).toBeTruthy();
-    fireEvent.click(screen.getByText('Verified account'));
+    fireEvent.click(screen.getByText('Live account'));
     expect(screen.getByRole('button', { name: 'Connect wallet' })).toBeTruthy();
   });
 
   it('connects from the compact Verified account menu', () => {
     renderProgression();
-    fireEvent.click(screen.getByText('Verified account'));
+    fireEvent.click(screen.getByText('Live account'));
     fireEvent.click(screen.getByRole('button', { name: 'Connect wallet' }));
     expect(connectAsync).toHaveBeenCalledWith({ connector: { id: 'injected' } });
   });

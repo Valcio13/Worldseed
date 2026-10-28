@@ -102,7 +102,7 @@ chain, contract, and run ID. The JSON request envelope is:
 {
   "commandId": "<stable client-generated idempotency key, 1–128 characters>",
   "expectedSequence": 0,
-  "command": { "type": "heart-click" }
+  "command": { "type": "heart-click", "quantity": 25 }
 }
 ```
 
@@ -115,11 +115,15 @@ accepted as authoritative inputs. Unrecognized envelope fields are ignored.
 Supported commands:
 
 ```json
-{ "type": "heart-click" }
+{ "type": "heart-click", "quantity": 25 }
 { "type": "sync" }
 { "type": "buy-habitat", "habitat": "water|grass|forest", "quantity": 1 }
 { "type": "buy-temporary-upgrade", "upgrade": "sunny-season|deep-roots" }
 ```
+
+Heart `quantity` is optional for backwards compatibility (omitted means one click) and, when
+present, must be an integer from 1 through 100. A batch is one ordered, idempotent verifier
+command; Nature is credited only when the verifier accepts it using canonical rules.
 
 Habitat quantity must be an integer from 1 through 1,000. The verifier validates available Nature,
 purchase costs, levels, run status, season, and elapsed server time using rules version 1. Rejected

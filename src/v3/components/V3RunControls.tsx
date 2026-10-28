@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import type { V3RunState, V3UpgradeKind, TransactionState } from '../types';
 import { V3_UPGRADE_CONFIG } from '../types';
+import { ppUpgradeCost } from '../../incremental/rulesV1';
 
 interface V3RunControlsProps {
   runState: V3RunState;
@@ -23,6 +24,18 @@ const UPGRADE_IDS: Record<V3UpgradeKind, number> = {
   awakening: 2,
   rebirth: 3,
 };
+
+function selectedUpgradeCost(
+  selected: Record<V3UpgradeKind, number>,
+  currentLevels: Record<V3UpgradeKind, number>,
+): bigint {
+  return (Object.keys(selected) as V3UpgradeKind[]).reduce((total, upgrade) => {
+    const quantity = selected[upgrade];
+    return quantity > 0
+      ? total + ppUpgradeCost(currentLevels[upgrade], quantity)
+      : total;
+  }, 0n);
+}
 
 export function V3RunControls({
   runState,
@@ -50,12 +63,19 @@ export function V3RunControls({
     awakening: 0,
     rebirth: 0,
   });
+  const allocationCost = selectedUpgradeCost(selectedUpgrades, upgradeLevels);
+  const allocationAffordable = allocationCost <= seasonalPP;
+  const remainingPP = allocationAffordable ? seasonalPP - allocationCost : 0n;
+  const allocationError = allocationAffordable
+    ? null
+    : `Selected upgrades cost ${allocationCost} PP, but only ${seasonalPP} PP is available.`;
 
   const hasActiveRun = runId > 0n && run?.status === 'ACTIVE';
   const isProcessing = transactionState === 'pending' || isStarting;
 
   const handleStartRun = async () => {
     if (!onStartRun) return;
+    if (!allocationAffordable) return;
 
     const upgrades = Object.entries(selectedUpgrades)
       .filter(([, qty]) => qty > 0)
@@ -67,8 +87,14 @@ export function V3RunControls({
   const handleUpgradeSelect = (upgrade: V3UpgradeKind, delta: number) => {
     setSelectedUpgrades((prev) => {
       const newValue = Math.max(0, prev[upgrade] + delta);
-      const maxLevel = V3_UPGRADE_CONFIG[upgrade].maxLevel;
-      return { ...prev, [upgrade]: Math.min(newValue, maxLevel) };
+      const maxLevel = Math.max(0, V3_UPGRADE_CONFIG[upgrade].maxLevel - upgradeLevels[upgrade]);
+      const nextValue = Math.min(newValue, maxLevel);
+      if (nextValue > prev[upgrade]) {
+        const currentAllocationCost = selectedUpgradeCost(prev, upgradeLevels);
+        const nextLevelCost = ppUpgradeCost(upgradeLevels[upgrade] + prev[upgrade], 1);
+        if (currentAllocationCost + nextLevelCost > seasonalPP) return prev;
+      }
+      return { ...prev, [upgrade]: nextValue };
     });
   };
 
@@ -141,7 +167,9 @@ export function V3RunControls({
 
         <div className="v3-start-upgrades">
           <h4>Starting Upgrades (Optional)</h4>
-          <p>Available seasonal PP: {seasonalPP.toString()}</p>
+          <p>
+            Available seasonal PP: {seasonalPP.toString()} · Remaining: {remainingPP.toString()}
+          </p>
           <p className="v3-upgrades-hint">
             Choose upgrades before starting; they are applied atomically with the Start Run
             transaction.
@@ -152,6 +180,7 @@ export function V3RunControls({
             .map((upgradeId) => {
               const config = V3_UPGRADE_CONFIG[upgradeId];
               const level = selectedUpgrades[upgradeId];
+              const maxSelectableLevel = Math.max(0, config.maxLevel - upgradeLevels[upgradeId]);
 
               return (
                 <div key={upgradeId} className="v3-start-upgrade-row">
@@ -159,6 +188,11 @@ export function V3RunControls({
                     {config.label}
                     <small>{config.description}</small>
                     <small>Current level: {upgradeLevels[upgradeId]}</small>
+                    {level < maxSelectableLevel && (
+                      <small>
+                        Next level: {ppUpgradeCost(upgradeLevels[upgradeId] + level, 1).toString()} PP
+                      </small>
+                    )}
                   </span>
                   <div className="v3-start-upgrade-controls">
                     <button
@@ -174,7 +208,10 @@ export function V3RunControls({
                     <button
                       type="button"
                       className="v3-upgrade-adjust"
-                      disabled={level >= config.maxLevel}
+                      disabled={
+                        level >= maxSelectableLevel ||
+                        ppUpgradeCost(upgradeLevels[upgradeId] + level, 1) > remainingPP
+                      }
                       onClick={() => handleUpgradeSelect(upgradeId, 1)}
                       aria-label={`Increase ${config.label}`}
                     >
@@ -187,11 +224,12 @@ export function V3RunControls({
         </div>
 
         <div className="v3-start-actions">
+          {allocationError && <p role="alert">{allocationError}</p>}
           <button
             type="button"
             className="v3-primary-button"
             onClick={handleStartRun}
-            disabled={isProcessing}
+            disabled={isProcessing || !allocationAffordable}
           >
             {isProcessing ? (
               <>

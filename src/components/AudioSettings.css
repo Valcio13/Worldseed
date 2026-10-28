@@ -12,9 +12,10 @@
 }
 
 .audio-settings summary {
-  display: grid;
+  display: flex;
   min-height: 36px;
-  place-items: center;
+  align-items: center;
+  justify-content: center;
   padding: 0 12px;
   border: 1px solid rgba(108, 147, 105, 0.28);
   border-radius: 999px;
@@ -22,6 +23,17 @@
   cursor: pointer;
   list-style: none;
   white-space: nowrap;
+}
+
+.audio-settings > summary::after {
+  content: '⌄';
+  display: inline-block;
+  margin-left: 5px;
+  transition: transform 180ms ease;
+}
+
+.audio-settings[open] > summary::after {
+  transform: rotate(180deg);
 }
 
 .audio-settings summary::-webkit-details-marker {

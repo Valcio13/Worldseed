@@ -737,6 +737,28 @@ export function LivingIslandScreen({
 }: LivingIslandScreenProps) {
   const reward = rebirthReward(state);
   const progress = rebirthProgress(state);
+  const [noticePresentation, setNoticePresentation] = useState<{
+    text: string;
+    important: boolean;
+    exiting: boolean;
+  } | null>(null);
+  const noticeExitTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- Keep a toast mounted briefly for its exit animation. */
+  useEffect(() => {
+    if (noticeExitTimer.current) window.clearTimeout(noticeExitTimer.current);
+    if (notice) {
+      setNoticePresentation({ text: notice, important: noticeImportant, exiting: false });
+      return;
+    }
+
+    setNoticePresentation((current) => (current ? { ...current, exiting: true } : null));
+    noticeExitTimer.current = window.setTimeout(() => setNoticePresentation(null), 180);
+    return () => {
+      if (noticeExitTimer.current) window.clearTimeout(noticeExitTimer.current);
+    };
+  }, [notice, noticeImportant]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <div className="living-game">
@@ -798,6 +820,9 @@ export function LivingIslandScreen({
                       : '—'
                     : formatValue(state.nature)}
                 </strong>
+                {mode === 'verified' && (verifiedIsland?.pendingHeartClicks ?? 0) > 0 && (
+                  <small aria-live="polite">{verifiedIsland?.pendingHeartClicks ?? 0} Heart clicks syncing</small>
+                )}
               </div>
               <div className="living-resource">
                 <span>{mode === 'verified' ? 'Earned this run' : 'Growing'}</span>
@@ -1064,13 +1089,13 @@ export function LivingIslandScreen({
             : 'Live rewards are verifier-backed; Guest Nature and points are simulated. Progress stays separate.'}
         </footer>
       </main>
-      {notice && (
+      {noticePresentation && (
         <div
-          className={`living-notice${noticeImportant ? ' living-notice--important' : ''}`}
-          role={noticeImportant ? 'alert' : 'status'}
-          aria-live={noticeImportant ? 'assertive' : 'polite'}
+          className={`living-notice${noticePresentation.important ? ' living-notice--important' : ''}${noticePresentation.exiting ? ' living-notice--exiting' : ''}`}
+          role={noticePresentation.important ? 'alert' : 'status'}
+          aria-live={noticePresentation.important ? 'assertive' : 'polite'}
         >
-          <span>{notice}</span>
+          <span>{noticePresentation.text}</span>
           <button type="button" onClick={onNoticeDismiss} aria-label="Dismiss notification">
             ×
           </button>

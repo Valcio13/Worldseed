@@ -35,6 +35,21 @@ function fundedRun(overrides: Partial<CanonicalRunState> = {}): CanonicalRunStat
 }
 
 describe('canonical rules v2 habitat expansion', () => {
+  it('credits up to 100 Heart clicks in one authoritative command', () => {
+    const result = applyCanonicalCommand(
+      run(),
+      { type: 'heart-click', quantity: 100 },
+      MONDAY_EPOCH_MS,
+    );
+    expect(result.creditedAtoms).toBe(100n * NATURE_SCALE);
+    expect(result.state.earnedNatureAtoms).toBe(100n * NATURE_SCALE);
+    expect(() => applyCanonicalCommand(
+      run(),
+      { type: 'heart-click', quantity: 101 },
+      MONDAY_EPOCH_MS,
+    )).toThrow(/Heart batch/);
+  });
+
   it('creates six-habitat state and purchases each approved habitat deterministically', () => {
     let state = fundedRun();
     expect(HABITATS).toEqual([

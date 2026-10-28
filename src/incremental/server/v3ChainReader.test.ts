@@ -31,6 +31,7 @@ function setup(
     head?: bigint;
     logAt?: bigint;
     failFirstLogQuery?: boolean;
+    skipRecent?: boolean;
     rulesVersion?: number;
   } = {},
 ) {
@@ -69,6 +70,9 @@ function setup(
         failedLogQuery = true;
         throw new Error('temporary RPC failure');
       }
+      const confirmedHead = (options.head ?? 12n) - 1n;
+      const recentStart = confirmedHead - 999n > 10n ? confirmedHead - 999n : 10n;
+      if (options.skipRecent && fromBlock === recentStart && toBlock === confirmedHead) return [];
       const eventBlock = options.logAt ?? 10n;
       if (eventBlock < fromBlock || eventBlock > toBlock) return [];
       return [
@@ -115,7 +119,7 @@ const session = {
 
 describe('confirmed V3 chain state reader', () => {
   it('reconstructs only a confirmed active run and verifies the committed upgrade array', async () => {
-    const { reader, checkpoints } = setup();
+    const { reader, checkpoints, queriedRanges } = setup();
     const run = await reader.getRunContext(session, '42');
     expect(run).toMatchObject({
       player: wallet,
@@ -132,6 +136,7 @@ describe('confirmed V3 chain state reader', () => {
       upgradeChoices: choiceList,
     });
     expect(checkpoints.getChainCheckpoint('31337', contract)?.blockNumber).toBe(11);
+    expect(queriedRanges).toEqual([[10n, 11n]]);
     await expect(reader.getConfirmedNonceObservation(wallet)).resolves.toMatchObject({
       chainId: '31337',
       verifyingContract: contract,
@@ -178,7 +183,11 @@ describe('confirmed V3 chain state reader', () => {
   });
 
   it('scans a large history in bounded pages and reuses the confirmed recovered event', async () => {
-    const { reader, checkpoints, queriedRanges } = setup(31_337, { head: 2_507n, logAt: 2_300n });
+    const { reader, checkpoints, queriedRanges } = setup(31_337, {
+      head: 2_507n,
+      logAt: 2_300n,
+      skipRecent: true,
+    });
     await expect(reader.getRunContext(session, '42')).rejects.toMatchObject({
       code: 'RECOVERY_FAILED',
     });
@@ -188,13 +197,14 @@ describe('confirmed V3 chain state reader', () => {
     const recovered = await reader.getRunContext(session, '42');
     expect(recovered?.input.upgradeChoices).toEqual(choiceList);
     expect(queriedRanges).toEqual([
+      [1_507n, 2_506n],
       [10n, 1_009n],
       [1_010n, 2_009n],
       [2_010n, 2_506n],
     ]);
     expect(queriedRanges.every(([from, to]) => to - from + 1n <= 1_000n)).toBe(true);
     expect(await reader.getRunContext(session, '42')).toMatchObject({ active: true });
-    expect(queriedRanges).toHaveLength(3);
+    expect(queriedRanges).toHaveLength(4);
     checkpoints.close();
   });
 
@@ -222,6 +232,7 @@ describe('confirmed V3 chain state reader', () => {
     const recovered = await restarted.getRunContext(session, '42');
     expect(recovered?.input.upgradeChoices).toEqual(choiceList);
     expect(queriedRanges).toEqual([
+      [2_007n, 3_006n],
       [10n, 1_009n],
       [1_010n, 2_009n],
     ]);
@@ -255,6 +266,7 @@ describe('confirmed V3 chain state reader', () => {
       code: 'RECOVERY_FAILED',
     });
     expect(queriedRanges).toEqual([
+      [201n, 1_200n],
       [10n, 1_009n],
       [10n, 1_009n],
     ]);

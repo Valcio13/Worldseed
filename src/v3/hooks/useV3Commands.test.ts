@@ -808,7 +808,10 @@ describe('useV3Commands persistence and verifier behavior', () => {
     vi.restoreAllMocks();
   });
 
-  afterEach(() => window.localStorage.clear());
+  afterEach(() => {
+    vi.useRealTimers();
+    window.localStorage.clear();
+  });
 
   it('persists the stable ID, exact payload, and cursor before sending', async () => {
     const payload = { type: 'buy-habitat', habitat: 'forest', quantity: 4 } as const;
@@ -997,45 +1000,63 @@ describe('useV3Commands persistence and verifier behavior', () => {
     releaseFirst(receipt(firstEnvelope.commandId, 1));
   });
 
-  it('durably queues rapid Heart clicks and submits them in sequence without losing clicks', async () => {
-    let releaseFirst!: (value: V3CommandReceipt) => void;
+  it('persists clicks and sends timed batches no larger than 100 in sequence', async () => {
     const submitSpy = vi
       .spyOn(v3Api, 'submitCommand')
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            releaseFirst = resolve;
-          }),
-      )
       .mockImplementation(async (_run, envelope) =>
         receipt(envelope.commandId, envelope.expectedSequence + 1),
       );
+    vi.useFakeTimers();
     const { result } = renderHook(() => useV3Commands(runId, token));
 
     act(() => {
-      expect(result.current.enqueueHeartClick()).toBe(true);
-      expect(result.current.enqueueHeartClick()).toBe(true);
-      expect(result.current.enqueueHeartClick()).toBe(true);
+      for (let click = 0; click < 205; click += 1)
+        expect(result.current.enqueueHeartClick()).toBe(true);
     });
-    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1));
+    expect(submitSpy).not.toHaveBeenCalled();
     const persisted = JSON.parse(
       window.localStorage.getItem(`worldseed:v3:command-queue:${runId}`) ?? '{}',
     );
-    expect(persisted.queuedHeartClicks).toBe(2);
-    expect(persisted.commands[0].status).toBe('pending');
+    expect(persisted.queuedHeartClicks).toBe(205);
+    expect(persisted.heartBatchDueAt).toBeGreaterThan(Date.now());
 
-    await act(async () => {
-      releaseFirst(receipt(submitSpy.mock.calls[0][1].commandId, 1));
-    });
-    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(3));
-    await waitFor(() => {
-      expect(result.current.state?.queuedHeartClicks).toBe(0);
-      expect(result.current.state?.cursor.currentSequence).toBe(3);
-    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+    expect(submitSpy.mock.calls[0][1].command).toEqual({ type: 'heart-click', quantity: 100 });
+    expect(result.current.state?.queuedHeartClicks).toBe(105);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+    expect(submitSpy).toHaveBeenCalledTimes(2);
+    expect(submitSpy.mock.calls[1][1].command).toEqual({ type: 'heart-click', quantity: 100 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+    expect(submitSpy).toHaveBeenCalledTimes(3);
+    expect(submitSpy.mock.calls[2][1].command).toEqual({ type: 'heart-click', quantity: 5 });
     expect(submitSpy.mock.calls.map((call) => call[1].expectedSequence)).toEqual([0, 1, 2]);
-    expect(result.current.state?.commands.filter((command) => command.payload.type === 'heart-click'))
-      .toHaveLength(1);
+    expect(result.current.state?.queuedHeartClicks).toBe(0);
+    expect(result.current.state?.cursor.currentSequence).toBe(3);
     await act(async () => result.current.flushPendingCommands());
+  });
+
+  it('restores a definitely rejected batch and blocks it from automatic replay', async () => {
+    const submitSpy = vi.spyOn(v3Api, 'submitCommand')
+      .mockRejectedValue(new V3ApiError('Rejected by verifier', 'RULES_REJECTED', 409));
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useV3Commands(runId, token));
+    act(() => {
+      result.current.enqueueHeartClick();
+      result.current.enqueueHeartClick();
+      result.current.enqueueHeartClick();
+    });
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+    expect(submitSpy.mock.calls[0][1].command).toEqual({ type: 'heart-click', quantity: 3 });
+    expect(result.current.state?.queuedHeartClicks).toBe(3);
+    expect(result.current.state?.heartQueueBlocked).toBe(true);
+    expect(result.current.state?.commands[0].status).toBe('failed');
+    await expect(result.current.flushPendingCommands()).rejects.toThrow(/rejected/);
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    expect(submitSpy).toHaveBeenCalledTimes(1);
   });
 
   it('restores queued Heart clicks after refresh and waits for the interrupted envelope retry', async () => {
@@ -1051,26 +1072,31 @@ describe('useV3Commands persistence and verifier behavior', () => {
       .mockImplementation(async (_run, envelope) =>
         receipt(envelope.commandId, envelope.expectedSequence + 1),
       );
+    vi.useFakeTimers();
     const first = renderHook(() => useV3Commands(runId, token));
     act(() => {
       first.result.current.enqueueHeartClick();
       first.result.current.enqueueHeartClick();
     });
-    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+    expect(submitSpy).toHaveBeenCalledTimes(1);
     const interruptedEnvelope = submitSpy.mock.calls[0][1];
+    act(() => first.result.current.enqueueHeartClick());
     first.unmount();
 
     const reloaded = renderHook(() => useV3Commands(runId, 'renewed-session'));
-    await waitFor(() => expect(reloaded.result.current.state?.commands[0].status).toBe('uncertain'));
+    expect(reloaded.result.current.state?.commands[0].status).toBe('uncertain');
     expect(reloaded.result.current.state?.queuedHeartClicks).toBe(1);
     expect(submitSpy).toHaveBeenCalledTimes(1);
     await act(async () => {
       await reloaded.result.current.retryCommand(interruptedEnvelope.commandId);
     });
-    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(3));
     expect(submitSpy.mock.calls[1][1]).toEqual(interruptedEnvelope);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+    expect(submitSpy).toHaveBeenCalledTimes(3);
     expect(submitSpy.mock.calls[2][1].expectedSequence).toBe(1);
-    await waitFor(() => expect(reloaded.result.current.state?.queuedHeartClicks).toBe(0));
+    expect(submitSpy.mock.calls[2][1].command).toEqual({ type: 'heart-click', quantity: 1 });
+    expect(reloaded.result.current.state?.queuedHeartClicks).toBe(0);
     releaseFirst(receipt(interruptedEnvelope.commandId, 1));
   });
 

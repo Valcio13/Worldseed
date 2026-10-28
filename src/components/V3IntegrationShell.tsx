@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useConnect, useDisconnect, useSwitchChain } from 'wagmi';
+import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import { V3RunControls } from '../v3/components/V3RunControls';
 import { V3StatusPanel } from '../v3/components/V3StatusPanel';
 import { V3VerifiedGameplay } from '../v3/components/V3VerifiedGameplay';
@@ -90,6 +90,7 @@ function VerifiedProgression({
   const { connectAsync, connectors, isPending: connecting } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChainAsync, isPending: switching } = useSwitchChain();
+  const walletAccount = useAccount();
   const [walletError, setWalletError] = useState<string | null>(null);
   const activeVerifiedRunId =
     runState.runId > 0n && runState.run?.status === 'ACTIVE'
@@ -124,7 +125,8 @@ function VerifiedProgression({
   const hasActiveRun = runState.runId > 0n && runState.run?.status === 'ACTIVE';
   const isAuthenticating = ['requesting-challenge', 'signing', 'completing'].includes(auth.status);
   const canAuthenticate = Boolean(auth.canAuthenticate && authenticationRunId !== undefined);
-  const walletBusy = connecting || switching;
+  const walletReconnecting = walletAccount.status === 'reconnecting';
+  const walletBusy = connecting || switching || walletReconnecting;
   const flowBusy = [
     'fetching-next-run-id',
     'authenticating',
@@ -293,8 +295,10 @@ function VerifiedProgression({
                 ? (startFlow.state.error ?? 'Start Run failed.')
                 : null;
 
-  const disconnectLabel = !runState.wallet
-    ? 'Connect wallet'
+  const disconnectLabel = walletReconnecting
+    ? 'Restoring wallet…'
+    : !runState.wallet
+      ? 'Connect wallet'
     : !runState.isCorrectChain
       ? 'Switch to Hemi Sepolia'
       : `Disconnect ${runState.wallet.slice(0, 6)}…${runState.wallet.slice(-4)}`;
@@ -309,6 +313,9 @@ function VerifiedProgression({
         <div className="v3-living-account-panel">
           <p className="v3-living-account-mode">Live · Hemi Sepolia</p>
           <p>Guest progress is simulated. Live rewards require an authenticated verifier-backed run.</p>
+          {walletReconnecting && (
+            <p role="status" aria-live="polite">Restoring the wallet connection saved by your browser…</p>
+          )}
           <button type="button" onClick={() => void handleWalletAction()} disabled={walletBusy}>
             {connecting ? 'Connecting…' : switching ? 'Switching…' : disconnectLabel}
           </button>
@@ -333,7 +340,11 @@ function VerifiedProgression({
                   onClick={() => void authenticateWallet()}
                   disabled={!canAuthenticate || isAuthenticating}
                 >
-                  {isAuthenticating ? 'Authenticating…' : 'Authenticate wallet'}
+                  {isAuthenticating
+                    ? 'Authenticating…'
+                    : auth.error === 'Session expired'
+                      ? 'Sign in again'
+                      : 'Authenticate wallet'}
                 </button>
               )}
               {!hasActiveRun && auth.isAuthenticated && (

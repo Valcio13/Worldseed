@@ -4,7 +4,7 @@ import { isAddress, type Hex } from 'viem';
 import { createCanonicalRun } from '../versionedRules';
 import { natureAtomsForSettlement } from '../natureStatistics';
 import type { GameplayCommand } from '../versionedRules';
-import type { UpgradeChoice } from '../rulesV1';
+import { MAX_HEART_CLICK_BATCH, type UpgradeChoice } from '../rulesV1';
 import type { Habitat as HabitatV2, HabitatUpgradeMilestone } from '../rulesV2';
 import { LocalVerifier, commandReceiptToWire } from '../localVerifier';
 import {
@@ -122,7 +122,13 @@ function parseChoices(value: unknown): UpgradeChoice[] {
 function parseCommand(value: unknown): GameplayCommand {
   if (!isObject(value) || typeof value.type !== 'string')
     throw new HttpError(400, 'Gameplay command is malformed.');
-  if (value.type === 'heart-click' || value.type === 'sync') return { type: value.type };
+  if (value.type === 'sync') return { type: value.type };
+  if (value.type === 'heart-click') {
+    const quantity = value.quantity === undefined ? 1 : value.quantity;
+    if (!Number.isSafeInteger(quantity) || (quantity as number) < 1 || (quantity as number) > MAX_HEART_CLICK_BATCH)
+      throw new HttpError(400, `Heart batch quantity must be an integer from 1 through ${MAX_HEART_CLICK_BATCH}.`);
+    return { type: 'heart-click', quantity: quantity as number };
+  }
   if (value.type === 'buy-habitat') {
     if (
       !['water', 'grass', 'forest', 'mountain', 'crystal-cavern', 'ancient-grove'].includes(

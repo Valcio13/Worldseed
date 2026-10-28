@@ -76,6 +76,7 @@ export interface V3ChainStateReaderOptions {
 }
 
 const RUN_STARTED_LOOKUP_CHUNK_BLOCKS = 1_000n;
+const RUN_STARTED_RECENT_LOOKUP_BLOCKS = 1_000n;
 
 interface PersistedRunStartedEvent {
   player: string;
@@ -483,6 +484,7 @@ export class V3ChainStateReader implements RunAuthorityReader {
           runId,
           BigInt(seasonId),
           blockNumber,
+          startedAtRaw,
         );
       } catch (error) {
         if (error instanceof VerifierError) throw error;
@@ -575,6 +577,7 @@ export class V3ChainStateReader implements RunAuthorityReader {
     runId: bigint,
     seasonId: bigint,
     confirmedHead: bigint,
+    startedAt: bigint,
   ): Promise<PersistedRunStartedEvent> {
     const key: RunStartedEventScanKey = {
       chainId: String(this.config.chain.id),
@@ -625,6 +628,76 @@ export class V3ChainStateReader implements RunAuthorityReader {
         );
       scan = (await this.checkpoints.getRunStartedEventScan(key))!;
       validateRunStartedScan(scan, deploymentBlock);
+    }
+
+    // A just-started run is almost always in the recent confirmed window. Look there first
+    // instead of paging from deploymentBlock; the run record supplies the expected timestamp.
+    const recentFrom = confirmedHead - RUN_STARTED_RECENT_LOOKUP_BLOCKS + 1n > BigInt(deploymentBlock)
+      ? confirmedHead - RUN_STARTED_RECENT_LOOKUP_BLOCKS + 1n
+      : BigInt(deploymentBlock);
+    if (scan.scannedThrough < deploymentBlock && recentFrom <= confirmedHead) {
+      try {
+        const before = await this.client.getBlock({ blockNumber: confirmedHead });
+        const boundaryHash = before.hash?.toLowerCase();
+        if (!boundaryHash) throw new Error('Confirmed recent boundary has no block hash.');
+        const recentLogs = await this.client.getLogs({
+          address: this.config.contractAddress,
+          event: V3_RUN_STARTED_ABI[0],
+          args: { player: wallet, runId, seasonId },
+          fromBlock: recentFrom,
+          toBlock: confirmedHead,
+        });
+        const after = await this.client.getBlock({ blockNumber: confirmedHead });
+        if (after.hash?.toLowerCase() !== boundaryHash)
+          throw new Error('Chain reorganized during recent RunStarted lookup.');
+        const matches = recentLogs.filter(
+          (log) =>
+            log.args.player?.toLowerCase() === wallet.toLowerCase() &&
+            log.args.runId === runId &&
+            log.args.seasonId === seasonId &&
+            log.args.startedAt === startedAt,
+        );
+        if (matches.length === 1) {
+          const log = matches[0]!;
+          if (log.blockNumber === null || !log.blockHash)
+            throw new Error('Recent RunStarted log has no block identity.');
+          const eventBlock = await this.client.getBlock({ blockNumber: log.blockNumber });
+          if (eventBlock.hash?.toLowerCase() !== log.blockHash.toLowerCase())
+            throw new Error('Recent RunStarted event block is not canonical.');
+          const args = log.args;
+          if (
+            !args.player || args.runId === undefined || args.seasonId === undefined ||
+            args.rulesVersion === undefined || !args.upgradeChoicesHash ||
+            args.startedAt === undefined || !args.upgradeChoices
+          ) throw new Error('Recent RunStarted event is incomplete.');
+          const event: PersistedRunStartedEvent = {
+            player: args.player,
+            runId: args.runId.toString(),
+            seasonId: args.seasonId.toString(),
+            rulesVersion: args.rulesVersion,
+            upgradeChoicesHash: args.upgradeChoicesHash,
+            startedAt: args.startedAt.toString(),
+            upgradeChoices: args.upgradeChoices.map(({ upgradeId, quantity }) => ({ upgradeId, quantity })),
+          };
+          const cached = await this.checkpoints.advanceRunStartedEventScan(key, scan.nextBlock, {
+            nextBlock: asSafeNumber(confirmedHead + 1n, 'Recent RunStarted cursor'),
+            scannedThrough: asSafeNumber(confirmedHead, 'Recent RunStarted boundary'),
+            scannedBlockHash: boundaryHash,
+            eventJson: JSON.stringify(event),
+            eventBlockNumber: asSafeNumber(log.blockNumber, 'RunStarted event block'),
+            eventBlockHash: log.blockHash,
+            updatedAtMs: this.config.nowMilliseconds(),
+          });
+          if (cached !== 'advanced') throw new Error('RunStarted recovery changed concurrently.');
+          return event;
+        }
+      } catch (error) {
+        if (error instanceof VerifierError) throw error;
+        throw new VerifierError(
+          'RECOVERY_FAILED',
+          'Recent RunStarted lookup could not reach a confirmed range; retry to continue.',
+        );
+      }
     }
 
     if (scan.scannedThrough >= deploymentBlock && scan.scannedBlockHash) {

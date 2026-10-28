@@ -10,6 +10,78 @@
   --line: #496653;
 }
 
+/* Keep theme changes soft and controls responsive without delaying actions. */
+:root,
+body,
+.living-game,
+.living-game :is(button, input, select, textarea, summary, article, section, [class*='panel'], [class*='card']),
+.audio-settings-panel,
+.audio-settings summary {
+  transition:
+    color 200ms ease,
+    background-color 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.living-game button:not(:disabled) {
+  transition:
+    color 200ms ease,
+    background-color 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease,
+    filter 160ms ease,
+    transform 160ms ease;
+}
+
+.living-game button:not(:disabled):hover {
+  filter: brightness(1.035);
+}
+
+.living-game button:not(:disabled):active:not(.island-heart) {
+  transform: scale(0.985);
+}
+
+/* Progressive enhancement in browsers supporting animated details content. */
+details::details-content {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    content-visibility 180ms allow-discrete;
+}
+
+details[open]::details-content {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.v3-living-account > summary::after,
+.v3-advanced-activity > summary::after {
+  display: inline-block;
+  transition: transform 180ms ease;
+}
+
+.v3-living-account[open] > summary::after,
+.v3-advanced-activity[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  body,
+  .living-game,
+  .living-game *,
+  .audio-settings-panel,
+  .audio-settings summary {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 :root[data-theme='dark'] body {
   color: #f1f1e6;
   background: radial-gradient(ellipse at 85% 12%, #294837 0, #1d3a2d 48%, #173327 100%);

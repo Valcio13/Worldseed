@@ -162,7 +162,17 @@ export function translateGameplayCommand(uiCommand: unknown): V3GameplayCommand 
   const type = cmd.type;
 
   // Explicitly supported commands
-  if (type === 'heart-click' || type === 'sync') {
+  if (type === 'heart-click') {
+    const quantity = cmd.quantity;
+    if (quantity !== undefined &&
+      (!Number.isSafeInteger(quantity) || (quantity as number) < 1 || (quantity as number) > 100)) {
+      throw new Error('Invalid Heart batch quantity. Must be an integer from 1 through 100.');
+    }
+    return quantity === undefined
+      ? { type: 'heart-click' }
+      : { type: 'heart-click', quantity: quantity as number };
+  }
+  if (type === 'sync') {
     return { type };
   }
 

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createCanonicalRun,
@@ -78,9 +78,12 @@ function queueState(commands: V3CommandQueueState['commands'] = []): V3CommandQu
   };
 }
 
-function renderVerified(commands: V3CommandQueueState['commands'] = []) {
+function renderVerified(
+  commands: V3CommandQueueState['commands'] = [],
+  override?: V3CommandQueueState,
+) {
   useV3CommandsMock.mockReturnValue({
-    state: queueState(commands),
+    state: override ?? queueState(commands),
     submitCommand: submitCommandMock,
     retryCommand: retryCommandMock,
     recoverState: recoverStateMock,
@@ -134,6 +137,7 @@ describe('verified Living Island adapter', () => {
         visualHabitatLevelCount: 0,
         scoreTier: 0,
         rulesVersion: 1,
+        pendingHeartClicks: 0,
         habitats: expect.arrayContaining([
           expect.objectContaining({ id: 'water', level: 0, nextCost: '10' }),
           expect.objectContaining({ id: 'grass', level: 0 }),
@@ -171,6 +175,16 @@ describe('verified Living Island adapter', () => {
     const snapshot = snapshotChangeMock.mock.calls.at(-1)?.[0];
     expect(Number(snapshot.nature)).toBe(100);
     expect(Number(snapshot.estimatedNature)).toBeGreaterThan(100);
+  });
+
+  it('shows queued Heart clicks in estimated Nature before verifier confirmation', async () => {
+    const queued = queueState();
+    queued.queuedHeartClicks = 2;
+    renderVerified([], queued);
+
+    await waitFor(() => expect(snapshotChangeMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ nature: '100', estimatedNature: '102', pendingHeartClicks: 2 }),
+    ));
   });
 
   it('stops the passive Nature estimate at the run season boundary', async () => {
@@ -370,5 +384,25 @@ describe('verified Living Island adapter', () => {
       nature: '100',
       habitats: expect.arrayContaining([expect.objectContaining({ id: 'water', level: 0 })]),
     }));
+  });
+
+  it('explains a rejected Heart batch and lets the player discard it to continue', async () => {
+    const rejected = {
+      commandId: 'rejected-heart',
+      payload: { type: 'heart-click', quantity: 4 } as const,
+      expectedSequence: 0,
+      submittedAt: Date.now(),
+      status: 'failed' as const,
+      error: 'Season expired.',
+    };
+    const blockedQueue = queueState([rejected]);
+    blockedQueue.queuedHeartClicks = 4;
+    blockedQueue.heartQueueBlocked = true;
+    renderVerified([rejected], blockedQueue);
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Season expired.'));
+    const discard = screen.getByRole('button', { name: 'Discard rejected clicks and continue' });
+    fireEvent.click(discard);
+    expect(discardQueuedHeartClicksMock).toHaveBeenCalledOnce();
   });
 });

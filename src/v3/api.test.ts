@@ -600,6 +600,8 @@ describe('V3 API - HTTP Methods and Paths', () => {
       const { translateGameplayCommand } = await import('./api');
 
       expect(translateGameplayCommand({ type: 'heart-click' })).toEqual({ type: 'heart-click' });
+      expect(translateGameplayCommand({ type: 'heart-click', quantity: 100 })).toEqual({ type: 'heart-click', quantity: 100 });
+      expect(() => translateGameplayCommand({ type: 'heart-click', quantity: 101 })).toThrow(/1 through 100/);
       expect(translateGameplayCommand({ type: 'sync' })).toEqual({ type: 'sync' });
       expect(
         translateGameplayCommand({ type: 'buy-habitat', habitat: 'water', quantity: 5 }),

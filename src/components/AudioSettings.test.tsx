@@ -46,6 +46,35 @@ describe('audio controls', () => {
     expect(play).not.toHaveBeenCalled();
   });
 
+  it('retries playback when unmuting even if the initial autoplay request was still pending', async () => {
+    let rejectInitialPlay!: (reason?: unknown) => void;
+    const initialPlay = new Promise<void>((_resolve, reject) => {
+      rejectInitialPlay = reject;
+    });
+    const play = vi
+      .spyOn(window.HTMLMediaElement.prototype, 'play')
+      .mockReturnValueOnce(initialPlay)
+      .mockResolvedValue(undefined);
+    updateAudioPreferences({ musicEnabled: true, muted: false });
+    render(<AudioSettings />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(play).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mute audio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unmute audio' }));
+
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('button', { name: 'Mute audio' })).toHaveAttribute('aria-pressed', 'false');
+
+    await act(async () => {
+      rejectInitialPlay(new Error('Playback was paused while muted'));
+      await Promise.resolve();
+    });
+  });
+
   it('exposes persisted independent music and sound effects levels and a mute control', () => {
     vi.spyOn(window.HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
     vi.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);

@@ -10,6 +10,7 @@ export const MAX_SCORE_TIER = 65_535;
 export const MAX_SCORE_EXPONENT = 9_363;
 export const MAX_NATURE_ATOMS = 10n ** 9_375n;
 export const MAX_COMMAND_PURCHASE = 1_000;
+export const MAX_HEART_CLICK_BATCH = 100;
 export const MAX_UPGRADE_LEVEL = 100;
 export const MAX_OFFLINE_MS = 8 * 60 * 60 * 1_000;
 export const SEASON_LENGTH_SECONDS = 7 * 24 * 60 * 60;
@@ -65,7 +66,7 @@ export interface CanonicalRunInput {
 }
 
 export type GameplayCommand =
-  | { type: 'heart-click' }
+  | { type: 'heart-click'; quantity?: number }
   | { type: 'buy-habitat'; habitat: Habitat; quantity: number }
   | { type: 'buy-temporary-upgrade'; upgrade: TemporaryUpgrade }
   | { type: 'sync' };
@@ -423,7 +424,10 @@ export function applyCanonicalCommand(
     case 'sync':
       break;
     case 'heart-click': {
-      const generated = credit(state, NATURE_SCALE);
+      const quantity = command.quantity ?? 1;
+      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_HEART_CLICK_BATCH)
+        throw new RulesError('INVALID_COMMAND', `Heart batch must be from 1 through ${MAX_HEART_CLICK_BATCH}.`);
+      const generated = credit(state, BigInt(quantity) * NATURE_SCALE);
       state = generated.state;
       creditedAtoms += generated.credited;
       break;

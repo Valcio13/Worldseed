@@ -1,8 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAccount, useChainId, usePublicClient, useReadContract, useWriteContract } from 'wagmi';
 import type { Hex } from 'viem';
 import { TARGET_CHAIN_ID } from '../../blockchain/config';
-import { requireSuccessfulReceipt, transactionFailureMessage } from '../../blockchain/transactions';
+import {
+  requireSuccessfulReceipt,
+  ReplacedTransactionError,
+  RevertedTransactionError,
+  transactionFailureMessage,
+} from '../../blockchain/transactions';
 import { v3Api, V3ApiError } from '../api';
 import { v3ContractAbi, v3ContractAddress, isV3Configured } from '../config';
 import {
@@ -34,14 +39,49 @@ const initialState: V3SettlementState = {
   error: null,
 };
 
-function isTimeout(error: unknown): boolean {
-  let current = error;
-  for (let depth = 0; depth < 5; depth += 1) {
-    if (!(current instanceof Error)) return false;
-    if (current.name.toLowerCase().includes('timeout')) return true;
-    current = 'cause' in current ? current.cause : undefined;
+interface PendingSettlement {
+  wallet: string;
+  action: V3SettlementAction;
+  transactionHash: Hex;
+}
+
+function pendingSettlementKey(wallet: string): string {
+  return `worldseed:v3:pending-settlement:${wallet.toLowerCase()}`;
+}
+
+function readPendingSettlement(wallet?: string): PendingSettlement | null {
+  if (!wallet || typeof window === 'undefined') return null;
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(pendingSettlementKey(wallet)) ?? 'null');
+    if (!value || typeof value !== 'object') return null;
+    const pending = value as Partial<PendingSettlement>;
+    if (
+      typeof pending.wallet !== 'string' || pending.wallet.toLowerCase() !== wallet.toLowerCase() ||
+      (pending.action !== 'recordPoints' && pending.action !== 'rebirth') ||
+      typeof pending.transactionHash !== 'string' || !/^0x[\da-fA-F]{64}$/.test(pending.transactionHash)
+    ) return null;
+    return pending as PendingSettlement;
+  } catch {
+    return null;
   }
-  return false;
+}
+
+function writePendingSettlement(pending: PendingSettlement): void {
+  try {
+    window.localStorage.setItem(pendingSettlementKey(pending.wallet), JSON.stringify(pending));
+  } catch {
+    // In-memory receipt reconciliation still prevents duplicate submissions this session.
+  }
+}
+
+function clearPendingSettlement(pending: PendingSettlement): void {
+  try {
+    const stored = readPendingSettlement(pending.wallet);
+    if (stored?.transactionHash === pending.transactionHash)
+      window.localStorage.removeItem(pendingSettlementKey(pending.wallet));
+  } catch {
+    // A storage failure must not alter the onchain receipt result.
+  }
 }
 
 /** Isolated V3 settlement hook; no component or command-queue wiring is performed here. */
@@ -50,7 +90,21 @@ export function useV3Settlement(sessionToken: string | null) {
   const chainId = useChainId();
   const publicClient = usePublicClient({ chainId: TARGET_CHAIN_ID });
   const { writeContractAsync } = useWriteContract();
-  const [state, setState] = useState<V3SettlementState>(initialState);
+  const [state, setState] = useState<V3SettlementState>(() => {
+    const pending = readPendingSettlement(account.address);
+    return pending
+      ? {
+          status: 'uncertain',
+          action: pending.action,
+          transactionHash: pending.transactionHash,
+          error: 'Checking the previous transaction before allowing another submission.',
+        }
+      : initialState;
+  });
+  const pendingTransactionRef = useRef<PendingSettlement | null>(
+    readPendingSettlement(account.address),
+  );
+  const executionInProgress = useRef(false);
   const enabled = Boolean(isV3Configured() && account.address && chainId === TARGET_CHAIN_ID);
 
   const activeRun = useReadContract({
@@ -193,8 +247,75 @@ export function useV3Settlement(sessionToken: string | null) {
     refetchUpgradeLevel3,
   ]);
 
+  useEffect(() => {
+    const pending = readPendingSettlement(account.address);
+    pendingTransactionRef.current = pending;
+    if (!pending) return;
+    setState({
+      status: 'uncertain',
+      action: pending.action,
+      transactionHash: pending.transactionHash,
+      error: 'Checking the previous transaction before allowing another submission.',
+    });
+  }, [account.address]);
+
+  useEffect(() => {
+    const pending = pendingTransactionRef.current;
+    if (
+      state.status !== 'uncertain' || !pending || !publicClient ||
+      pending.wallet !== account.address?.toLowerCase()
+    ) return;
+    let current = true;
+    let timer: ReturnType<typeof globalThis.setTimeout> | undefined;
+    const checkReceipt = async () => {
+      try {
+        const receipt = await publicClient.getTransactionReceipt({ hash: pending.transactionHash });
+        if (!current) return;
+        clearPendingSettlement(pending);
+        pendingTransactionRef.current = null;
+        if (receipt.status === 'success') {
+          let refreshError: string | null = null;
+          try { await refresh(); } catch { refreshError = 'Transaction confirmed, but balances could not be refreshed.'; }
+          if (current) setState({
+            status: 'confirmed',
+            action: pending.action,
+            transactionHash: pending.transactionHash,
+            error: refreshError,
+          });
+        } else {
+          setState({
+            status: 'failed',
+            action: pending.action,
+            transactionHash: pending.transactionHash,
+            error: 'The previous settlement transaction reverted. You can try again.',
+          });
+        }
+      } catch {
+        if (!current) return;
+        setState((previous) => ({
+          ...previous,
+          status: 'uncertain',
+          action: pending.action,
+          transactionHash: pending.transactionHash,
+          error: 'The previous transaction is still awaiting confirmation. Worldseed will not submit it twice.',
+        }));
+        timer = globalThis.setTimeout(() => void checkReceipt(), 3_000);
+      }
+    };
+    void checkReceipt();
+    return () => {
+      current = false;
+      if (timer) globalThis.clearTimeout(timer);
+    };
+  }, [account.address, publicClient, refresh, state.status, state.transactionHash]);
+
   const execute = useCallback(
     async (action: V3SettlementAction): Promise<Hex> => {
+      if (executionInProgress.current)
+        throw new Error('A settlement transaction is already being submitted.');
+      if (pendingTransactionRef.current)
+        throw new Error('The previous settlement transaction is still pending. Wait for it to confirm before trying again.');
+      executionInProgress.current = true;
       setState({ status: 'requesting-attestation', action, transactionHash: null, error: null });
       let submittedHash: Hex | null = null;
       let refreshFailed = false;
@@ -287,6 +408,15 @@ export function useV3Settlement(sessionToken: string | null) {
             },
             onTransactionHash: (transactionHash) => {
               submittedHash = transactionHash;
+              if (account.address) {
+                const pending = {
+                  wallet: account.address,
+                  action,
+                  transactionHash,
+                } satisfies PendingSettlement;
+                pendingTransactionRef.current = pending;
+                writePendingSettlement(pending);
+              }
               setState((current) => ({ ...current, transactionHash }));
             },
             onConfirmed: refresh,
@@ -303,9 +433,19 @@ export function useV3Settlement(sessionToken: string | null) {
             ? 'Transaction confirmed, but the latest onchain balances could not be refreshed.'
             : null,
         });
+        if (account.address) {
+          const submitted = { wallet: account.address, action, transactionHash: hash } satisfies PendingSettlement;
+          clearPendingSettlement(submitted);
+          pendingTransactionRef.current = null;
+        }
         return hash;
       } catch (error) {
-        const uncertain = submittedHash !== null && isTimeout(error);
+        const terminalReceipt = error instanceof RevertedTransactionError || error instanceof ReplacedTransactionError;
+        if (terminalReceipt && pendingTransactionRef.current) {
+          clearPendingSettlement(pendingTransactionRef.current);
+          pendingTransactionRef.current = null;
+        }
+        const uncertain = submittedHash !== null && !terminalReceipt;
         setState((current) => ({
           ...current,
           status: uncertain ? 'uncertain' : 'failed',
@@ -321,6 +461,8 @@ export function useV3Settlement(sessionToken: string | null) {
                   ),
         }));
         throw error;
+      } finally {
+        executionInProgress.current = false;
       }
     },
     [
@@ -346,7 +488,7 @@ export function useV3Settlement(sessionToken: string | null) {
 
   return {
     ...state,
-    canSettle: enabled && Boolean(sessionToken),
+    canSettle: enabled && Boolean(sessionToken) && !pendingTransactionRef.current,
     seasonalPP: seasonalPP.data ?? 0n,
     seasonalCP: seasonalCP.data ?? 0n,
     seasonalHighScoreTier: Number(seasonalHighScoreTier.data ?? 0),

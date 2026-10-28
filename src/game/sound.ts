@@ -58,6 +58,7 @@ let crossfadeFrom = 0;
 let sfxBusyUntil = Number.NEGATIVE_INFINITY;
 const listeners = new Set<(value: AudioPreferences) => void>();
 let musicStartPending = false;
+let musicStartGeneration = 0;
 let musicGestureFallback: (() => void) | null = null;
 
 function removeMusicGestureFallback(): void {
@@ -142,8 +143,13 @@ export function updateAudioPreferences(update: Partial<AudioPreferences>): Audio
   };
   persistPreferences();
   syncBuses();
-  if (!preferences.musicEnabled || preferences.muted || preferences.musicVolume <= 0)
+  if (!preferences.musicEnabled || preferences.muted || preferences.musicVolume <= 0) {
+    // A pending play() may stay unresolved after pause(); allow the next
+    // explicit unmute to retry playback immediately.
+    musicStartPending = false;
+    musicStartGeneration += 1;
     removeMusicGestureFallback();
+  }
   listeners.forEach((listener) => listener(getAudioPreferences()));
   return getAudioPreferences();
 }
@@ -294,20 +300,28 @@ function startMusic(): void {
   syncMusicVolumes();
   try {
     const playback = player.play();
+    const startGeneration = ++musicStartGeneration;
     musicStartPending = true;
     void playback.then(
       () => {
+        if (startGeneration !== musicStartGeneration) return;
         musicStartPending = false;
         removeMusicGestureFallback();
       },
       () => {
+        if (startGeneration !== musicStartGeneration) return;
         musicStartPending = false;
-        installMusicGestureFallback();
+        if (preferences.musicEnabled && !preferences.muted && preferences.musicVolume > 0) {
+          installMusicGestureFallback();
+        }
       },
     );
   } catch {
+    musicStartGeneration += 1;
     musicStartPending = false;
-    installMusicGestureFallback();
+    if (preferences.musicEnabled && !preferences.muted && preferences.musicVolume > 0) {
+      installMusicGestureFallback();
+    }
   }
 }
 

@@ -19,6 +19,23 @@ import type { V3Command, V3CommandQueueState, V3CursorState, V3GameplayCommand }
 import { v3Api } from '../api';
 import type { V3ApiError } from '../api';
 
+const HEART_BATCH_DELAY_MS = 1_500;
+const MAX_HEART_BATCH = 100;
+const MAX_QUEUED_HEART_CLICKS = 1_000;
+
+function heartClickQuantity(command: V3GameplayCommand): number {
+  return command.type === 'heart-click' ? (command.quantity ?? 1) : 0;
+}
+
+function outstandingHeartClicks(state: V3CommandQueueState): number {
+  return state.queuedHeartClicks + state.commands.reduce(
+    (total, command) => total + (command.status === 'pending' || command.status === 'uncertain'
+      ? heartClickQuantity(command.payload)
+      : 0),
+    0,
+  );
+}
+
 const STORAGE_PREFIX = 'worldseed:v3:command-queue:';
 
 function storageKey(runId: string): string {
@@ -32,6 +49,8 @@ function isPersistedQueue(value: unknown, runId: string): value is V3CommandQueu
     candidate.cursor?.runId === runId &&
     (candidate.queuedHeartClicks === undefined ||
       (Number.isSafeInteger(candidate.queuedHeartClicks) && candidate.queuedHeartClicks >= 0)) &&
+    (candidate.heartBatchDueAt === undefined || candidate.heartBatchDueAt === null ||
+      (Number.isSafeInteger(candidate.heartBatchDueAt) && candidate.heartBatchDueAt >= 0)) &&
     (candidate.heartQueueBlocked === undefined ||
       typeof candidate.heartQueueBlocked === 'boolean') &&
     Number.isSafeInteger(candidate.cursor.currentSequence) &&
@@ -75,6 +94,9 @@ function loadQueue(runId: string, sessionToken: string): V3CommandQueueState {
     return {
       ...parsed,
       queuedHeartClicks: parsed.queuedHeartClicks ?? 0,
+      heartBatchDueAt: parsed.heartBatchDueAt ?? (
+        (parsed.queuedHeartClicks ?? 0) > 0 ? Date.now() + HEART_BATCH_DELAY_MS : null
+      ),
       heartQueueBlocked: parsed.heartQueueBlocked ?? false,
       commands: parsed.commands.map((command) =>
         command.status === 'pending'
@@ -101,6 +123,7 @@ function persistQueue(state: V3CommandQueueState): boolean {
       commands: state.commands,
       cursor: state.cursor,
       queuedHeartClicks: state.queuedHeartClicks,
+      heartBatchDueAt: state.heartBatchDueAt ?? null,
       heartQueueBlocked: state.heartQueueBlocked ?? false,
       ...(state.recoveryError ? { recoveryError: state.recoveryError } : {}),
     };
@@ -154,6 +177,7 @@ function createInitialState(runId: string, sessionToken: string): V3CommandQueue
     isSubmitting: false,
     recoveringCursor: false,
     queuedHeartClicks: 0,
+    heartBatchDueAt: null,
     heartQueueBlocked: false,
     pendingCount: 0,
     confirmedCount: 0,
@@ -250,7 +274,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
    * Persists command before submission to enable retries
    */
   const submitCommand = useCallback(
-    async (command: V3GameplayCommand, consumeQueuedHeart = false) => {
+    async (command: V3GameplayCommand, consumeQueuedHeart = 0) => {
       const currentState = stateRef.current;
       if (!currentState || !runId || !sessionToken) {
         throw new Error('Command queue not initialized or session expired');
@@ -263,9 +287,14 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       ) {
         throw new Error('Resolve the existing command before submitting another command');
       }
-      if (consumeQueuedHeart && (command.type !== 'heart-click' || currentState.queuedHeartClicks <= 0)) {
+      if (!Number.isSafeInteger(consumeQueuedHeart) || consumeQueuedHeart < 0 || consumeQueuedHeart > MAX_HEART_BATCH ||
+        (consumeQueuedHeart > 0 && (command.type !== 'heart-click' || consumeQueuedHeart > currentState.queuedHeartClicks || heartClickQuantity(command) !== consumeQueuedHeart))) {
         throw new Error('No queued Heart click is available.');
       }
+      if (command.type === 'heart-click' && (!Number.isSafeInteger(heartClickQuantity(command)) || heartClickQuantity(command) < 1 || heartClickQuantity(command) > MAX_HEART_BATCH))
+        throw new Error(`Heart batches must contain 1 through ${MAX_HEART_BATCH} clicks.`);
+      if (consumeQueuedHeart === 0 && currentState.queuedHeartClicks > 0)
+        throw new Error('Queued Heart clicks must be verified before the next action.');
       submitting.current = true;
 
       const commandId = generateCommandId();
@@ -284,7 +313,10 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       const queuedState = {
         ...currentState,
         commands: [...currentState.commands, persistedCommand],
-        queuedHeartClicks: currentState.queuedHeartClicks - (consumeQueuedHeart ? 1 : 0),
+        queuedHeartClicks: currentState.queuedHeartClicks - consumeQueuedHeart,
+        heartBatchDueAt: currentState.queuedHeartClicks - consumeQueuedHeart > 0
+          ? Date.now() + HEART_BATCH_DELAY_MS
+          : null,
         isSubmitting: true,
       };
       if (!persistQueue(queuedState)) {
@@ -483,9 +515,10 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
           return {
             ...prev,
             isSubmitting: false,
-            ...(consumeQueuedHeart && status === 'failed'
+            ...(consumeQueuedHeart > 0 && status === 'failed'
               ? {
-                  queuedHeartClicks: prev.queuedHeartClicks + 1,
+                  queuedHeartClicks: prev.queuedHeartClicks + consumeQueuedHeart,
+                  heartBatchDueAt: null,
                   heartQueueBlocked: true,
                 }
               : {}),
@@ -677,8 +710,14 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
   const enqueueHeartClick = useCallback(() => {
     const current = stateRef.current;
     if (!current || !runId || !sessionToken || current.heartQueueBlocked) return false;
-    if (current.queuedHeartClicks >= 1_000) return false;
-    const next = { ...current, queuedHeartClicks: current.queuedHeartClicks + 1 };
+    if (outstandingHeartClicks(current) >= MAX_QUEUED_HEART_CLICKS) return false;
+    const next = {
+      ...current,
+      queuedHeartClicks: current.queuedHeartClicks + 1,
+      heartBatchDueAt: current.queuedHeartClicks === 0
+        ? Date.now() + HEART_BATCH_DELAY_MS
+        : current.heartBatchDueAt ?? Date.now() + HEART_BATCH_DELAY_MS,
+    };
     if (!persistQueue(next)) return false;
     commitState(next);
     return true;
@@ -687,7 +726,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
   const discardQueuedHeartClicks = useCallback(() => {
     const current = stateRef.current;
     if (!current) return;
-    const next = { ...current, queuedHeartClicks: 0, heartQueueBlocked: false };
+    const next = { ...current, queuedHeartClicks: 0, heartBatchDueAt: null, heartQueueBlocked: false };
     if (persistQueue(next)) commitState(next);
   }, [commitState]);
 
@@ -716,9 +755,11 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       state.recoveringCursor ||
       state.commands.some((command) => command.status === 'pending' || command.status === 'uncertain')
     ) return;
+    const dueAt = state.heartBatchDueAt ?? Date.now() + HEART_BATCH_DELAY_MS;
+    const quantity = Math.min(state.queuedHeartClicks, MAX_HEART_BATCH);
     const timer = window.setTimeout(() => {
-      void submitCommand({ type: 'heart-click' }, true).catch(() => undefined);
-    }, 0);
+      void submitCommand({ type: 'heart-click', quantity }, quantity).catch(() => undefined);
+    }, Math.max(0, dueAt - Date.now()));
     return () => window.clearTimeout(timer);
   }, [state, submitCommand]);
 

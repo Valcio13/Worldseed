@@ -90,6 +90,22 @@ describe('canonical rules v1', () => {
     expect(scoreTierFromEarnedNature(state.earnedNatureAtoms)).toBe(scoreBefore);
   });
 
+  it('credits bounded Heart batches exactly and rejects quantities above the batch limit', () => {
+    const result = applyCanonicalCommand(
+      freshRun(),
+      { type: 'heart-click', quantity: 100 },
+      MONDAY_EPOCH_MS,
+    );
+    expect(result.creditedAtoms).toBe(100n * NATURE_SCALE);
+    expect(result.state.natureAtoms).toBe(100n * NATURE_SCALE);
+    expect(result.state.earnedNatureAtoms).toBe(100n * NATURE_SCALE);
+    expect(() => applyCanonicalCommand(
+      freshRun(),
+      { type: 'heart-click', quantity: 101 },
+      MONDAY_EPOCH_MS,
+    )).toThrow(/Heart batch/);
+  });
+
   it('keeps PP upgrade settlement atomic and excludes its starting grant from earned Nature', () => {
     const state = createCanonicalRun({
       runId: 'run-2',

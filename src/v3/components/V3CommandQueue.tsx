@@ -33,6 +33,8 @@ function formatTime(timestamp: number): string {
 
 function getCommandTypeLabel(payload: V3Command['payload']): string {
   const label = COMMAND_TYPE_LABELS[payload.type];
+  if (payload.type === 'heart-click' && payload.quantity && payload.quantity > 1)
+    return `${label} ×${payload.quantity}`;
   return label || payload.type;
 }
 

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as rulesV1 from '../../incremental/rulesV1';
 import * as rulesV2 from '../../incremental/rulesV2';
+import { applyCanonicalCommand } from '../../incremental/versionedRules';
 import { productionPerSecondAtoms as productionPerSecondV1 } from '../../incremental/rulesV1';
 import { productionPerSecondAtoms as productionPerSecondV2 } from '../../incremental/rulesV2';
 import { formatValue, type BigValue } from '../../incremental/decimal';
+import { V3ApiError } from '../api';
 import { useV3Commands } from '../hooks/useV3Commands';
 import {
   createHabitatProductionUpgradeCommand,
@@ -41,6 +43,8 @@ export interface V3IslandSnapshot {
   visualHabitatLevelCount: number;
   scoreTier: number;
   rulesVersion: number;
+  /** Heart clicks queued or submitted locally but not yet accepted by the verifier. */
+  pendingHeartClicks?: number;
   habitats: Array<{
     id: V3HabitatKind;
     level: number;
@@ -120,8 +124,14 @@ function projectNatureForDisplay(
   return { ...state, natureAtoms: estimatedAtoms };
 }
 
-function toIslandSnapshot(next: VerifiedSnapshot, nowMs = Date.now()): V3IslandSnapshot {
+function toIslandSnapshot(
+  next: VerifiedSnapshot,
+  nowMs = Date.now(),
+  pendingHeartClicks = 0,
+): V3IslandSnapshot {
   const displayState = projectNatureForDisplay(next.state, nowMs);
+  const estimatedNatureAtoms = displayState.natureAtoms +
+    BigInt(pendingHeartClicks) * rulesV1.NATURE_SCALE;
   const habitats = habitatsForVerifiedState(next.state).map((id) => {
     const level = habitatLevelForVerifiedState(next.state, id) ?? 0;
     const nextCost = habitatPurchaseCostForVerifiedState(next.state, id, 1);
@@ -131,8 +141,8 @@ function toIslandSnapshot(next: VerifiedSnapshot, nowMs = Date.now()): V3IslandS
       id,
       level,
       nextCost: nextCost === null ? null : formatNatureAtoms(nextCost),
-      canBuyOne: nextCost !== null && nextCost <= displayState.natureAtoms,
-      maxAffordable: maxAffordableQuantity(displayState, id),
+      canBuyOne: nextCost !== null && nextCost <= estimatedNatureAtoms,
+      maxAffordable: maxAffordableQuantity({ ...displayState, natureAtoms: estimatedNatureAtoms }, id),
       purchasedUpgradeCount: upgrades.length,
       productionUpgrades: isV1VerifiedState(next.state)
         ? []
@@ -143,14 +153,14 @@ function toIslandSnapshot(next: VerifiedSnapshot, nowMs = Date.now()): V3IslandS
               cost: formatNatureAtoms(cost),
               purchased: upgrades.includes(milestone),
               available:
-                nextMilestone === milestone && level >= milestone && cost <= displayState.natureAtoms,
+                nextMilestone === milestone && level >= milestone && cost <= estimatedNatureAtoms,
             };
           }),
     };
   });
   return {
     nature: formatNatureAtoms(next.state.natureAtoms),
-    estimatedNature: formatNatureAtoms(displayState.natureAtoms),
+    estimatedNature: formatNatureAtoms(estimatedNatureAtoms),
     earnedNature: formatNatureAtoms(next.state.earnedNatureAtoms),
     productionPerSecond: formatNatureAtoms(productionPerSecond(next.state)),
     visualHabitatLevelCount: Object.values(next.state.habitats).reduce(
@@ -159,6 +169,7 @@ function toIslandSnapshot(next: VerifiedSnapshot, nowMs = Date.now()): V3IslandS
     ),
     scoreTier: next.scoreTier,
     rulesVersion: next.state.rulesVersion,
+    pendingHeartClicks,
     habitats,
   };
 }
@@ -175,9 +186,12 @@ export function V3VerifiedGameplay({
   onActionHandlersReady?: (handlers: V3IslandActionHandlers | null) => void;
 }) {
   const queue = useV3Commands(runId, sessionToken);
+  const enqueueHeartClick = queue.enqueueHeartClick;
+  const discardQueuedHeartClicks = queue.discardQueuedHeartClicks;
   const recoverState = queue.recoverState;
   const submitCommand = queue.submitCommand;
   const [snapshot, setSnapshot] = useState<VerifiedSnapshot | null>(null);
+  const [optimisticSnapshot, setOptimisticSnapshot] = useState<VerifiedSnapshot | null>(null);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [heartQueueError, setHeartQueueError] = useState<string | null>(null);
   const acceptedSequence = useRef(-1);
@@ -186,33 +200,66 @@ export function V3VerifiedGameplay({
     if (next.state.sequence < acceptedSequence.current) return;
     acceptedSequence.current = next.state.sequence;
     setSnapshot(next);
+    setOptimisticSnapshot(null);
     setSnapshotError(null);
     onSnapshotChange?.(toIslandSnapshot(next));
   }, [onSnapshotChange]);
 
   useEffect(() => {
     if (!snapshot || !onSnapshotChange) return;
-    const timer = window.setInterval(() => onSnapshotChange(toIslandSnapshot(snapshot)), 1_000);
+    const pendingClicks = (queue.state?.queuedHeartClicks ?? 0) + (queue.state?.commands ?? []).reduce(
+      (total, command) => total + (
+        command.payload.type === 'heart-click' &&
+        (command.status === 'pending' || command.status === 'uncertain')
+          ? command.payload.quantity ?? 1
+          : 0
+      ),
+      0,
+    );
+    const timer = window.setInterval(
+      () => onSnapshotChange(toIslandSnapshot(optimisticSnapshot ?? snapshot, Date.now(), pendingClicks)),
+      1_000,
+    );
+    onSnapshotChange(toIslandSnapshot(optimisticSnapshot ?? snapshot, Date.now(), pendingClicks));
     return () => window.clearInterval(timer);
-  }, [onSnapshotChange, snapshot]);
+  }, [onSnapshotChange, optimisticSnapshot, queue.state?.commands, queue.state?.queuedHeartClicks, snapshot]);
 
   useEffect(() => {
     let current = true;
-    void recoverState()
-      .then(recovery => {
-        if (!current || !recovery) return;
-        acceptSnapshot(readSnapshot(
-          recovery.canonicalState,
-          runId,
-          recovery.scoreTier,
-          recovery.cursor.sequence,
-        ));
-      })
-      .catch(error => {
-        if (current)
+    let retryTimer: number | undefined;
+    const sync = async () => {
+      try {
+        const recovery = await recoverState();
+        if (!current) return;
+        if (recovery) {
+          acceptSnapshot(readSnapshot(
+            recovery.canonicalState,
+            runId,
+            recovery.scoreTier,
+            recovery.cursor.sequence,
+          ));
+        } else {
+          retryTimer = window.setTimeout(() => void sync(), 1_500);
+        }
+      } catch (error) {
+        if (!current) return;
+        const retryable = !(error instanceof V3ApiError) ||
+          error.code === 'RECOVERY_FAILED' || error.status === 429 || error.status >= 500;
+        if (retryable) {
+          retryTimer = window.setTimeout(() => {
+            setSnapshotError(null);
+            void sync();
+          }, 1_500);
+        } else {
           setSnapshotError(error instanceof Error ? error.message : 'Could not recover Live run.');
-      });
-    return () => { current = false; };
+        }
+      }
+    };
+    void sync();
+    return () => {
+      current = false;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+    };
   }, [acceptSnapshot, recoverState, runId]);
 
   const commands = queue.state?.commands;
@@ -236,6 +283,15 @@ export function V3VerifiedGameplay({
   const hasUnresolvedCommand = (commands ?? []).some(command =>
     command.status === 'pending' || command.status === 'uncertain'
   );
+  const pendingHeartClicks = (queue.state?.queuedHeartClicks ?? 0) + (commands ?? []).reduce(
+    (total, command) => total + (
+      command.payload.type === 'heart-click' &&
+      (command.status === 'pending' || command.status === 'uncertain')
+        ? command.payload.quantity ?? 1
+        : 0
+    ),
+    0,
+  );
   const actionsDisabled = !snapshot || queue.state?.recoveringCursor || queue.state?.isSubmitting ||
     hasUnresolvedCommand || (queue.state?.queuedHeartClicks ?? 0) > 0;
   const heartClickPending =
@@ -244,27 +300,47 @@ export function V3VerifiedGameplay({
       command.payload.type === 'heart-click' &&
       (command.status === 'pending' || command.status === 'uncertain')
     );
+  const failedHeartCommand = [...(commands ?? [])].reverse().find(command =>
+    command.payload.type === 'heart-click' && command.status === 'failed'
+  );
 
-  const send = useCallback(async (command: V3GameplayCommand) => {
+  const send = useCallback(async (command: V3GameplayCommand, optimisticBase?: V3VerifiedCanonicalState) => {
+    if (optimisticBase && snapshot) {
+      try {
+        const result = applyCanonicalCommand(optimisticBase, command, Date.now());
+        setOptimisticSnapshot({
+          state: result.state,
+          scoreTier: rulesV1.scoreTierFromEarnedNature(result.state.earnedNatureAtoms),
+        });
+      } catch {
+        // The server remains authoritative; omit an optimistic projection if local validation fails.
+      }
+    }
     try {
       await submitCommand(command);
     } catch {
       // The queue retains the verifier error/status and renders its retry path.
+      setOptimisticSnapshot(null);
     }
-  }, [submitCommand]);
+  }, [snapshot, submitCommand]);
 
   const submitHeartClick = useCallback((): boolean => {
-    if (!queue.enqueueHeartClick()) {
+    if (!enqueueHeartClick()) {
       setHeartQueueError('Heart clicks are queued locally while Live progress syncs. Resolve the queue before continuing.');
       return false;
     }
     setHeartQueueError(null);
     return true;
-  }, [queue.enqueueHeartClick]);
+  }, [enqueueHeartClick]);
+
+  const discardRejectedHeartClicks = useCallback(() => {
+    discardQueuedHeartClicks();
+    setHeartQueueError(null);
+  }, [discardQueuedHeartClicks]);
 
   const canCollectHeart = Boolean(
     snapshot && !queue.state?.recoveringCursor && !queue.state?.heartQueueBlocked &&
-      (queue.state?.queuedHeartClicks ?? 0) < 1_000,
+      pendingHeartClicks < 1_000,
   );
 
   const buyHabitat = useCallback((habitat: V3HabitatKind, quantity: number) => {
@@ -274,7 +350,7 @@ export function V3VerifiedGameplay({
       habitat,
       quantity,
     );
-    if (command) void send(command);
+    if (command) void send(command, projectNatureForDisplay(snapshot.state));
   }, [send, snapshot]);
 
   const buyProductionUpgrade = useCallback((habitat: V3HabitatKind) => {
@@ -283,20 +359,20 @@ export function V3VerifiedGameplay({
       projectNatureForDisplay(snapshot.state),
       habitat,
     );
-    if (command) void send(command);
+    if (command) void send(command, projectNatureForDisplay(snapshot.state));
   }, [send, snapshot]);
 
   useEffect(() => {
     onActionHandlersReady?.(snapshot ? {
       pending: actionsDisabled,
       heartClickPending,
-      pendingHeartClicks: queue.state?.queuedHeartClicks ?? 0,
+      pendingHeartClicks,
       buyHabitat,
       buyProductionUpgrade,
       flushPendingCommands: queue.flushPendingCommands,
     } : null);
     return () => onActionHandlersReady?.(null);
-  }, [actionsDisabled, buyHabitat, buyProductionUpgrade, heartClickPending, onActionHandlersReady, queue.flushPendingCommands, queue.state?.queuedHeartClicks, snapshot]);
+  }, [actionsDisabled, buyHabitat, buyProductionUpgrade, heartClickPending, onActionHandlersReady, pendingHeartClicks, queue.flushPendingCommands, snapshot]);
 
   useEffect(() => {
     onHeartActionReady?.(canCollectHeart ? submitHeartClick : null);
@@ -309,17 +385,27 @@ export function V3VerifiedGameplay({
     <section className="v3-verified-runtime" aria-label="Live run activity">
       {snapshotError && <p className="living-notice" role="alert">{snapshotError}</p>}
       {heartQueueError && <p className="living-notice" role="alert">{heartQueueError}</p>}
-      {!snapshot && !snapshotError && <p className="living-notice" role="status">Syncing Live island…</p>}
-      {(queue.state?.queuedHeartClicks ?? 0) > 0 && (
+      {!snapshot && !snapshotError && <p className="living-notice" role="status">Syncing your run…</p>}
+      {queue.state?.heartQueueBlocked && (
+        <div className="living-notice" role="alert">
+          <span>
+            Heart batch rejected; no Nature was credited{failedHeartCommand?.error ? `: ${failedHeartCommand.error}` : '.'}
+          </span>
+          <button type="button" onClick={discardRejectedHeartClicks}>
+            Discard rejected clicks and continue
+          </button>
+        </div>
+      )}
+      {!queue.state?.heartQueueBlocked && pendingHeartClicks > 0 && (
         <p className="living-notice" role="status" aria-live="polite">
-          {queue.state?.queuedHeartClicks} Heart click{queue.state?.queuedHeartClicks === 1 ? '' : 's'} queued for verifier acceptance.
+          {pendingHeartClicks} Heart click{pendingHeartClicks === 1 ? '' : 's'} syncing with the verifier.
         </p>
       )}
       {queue.state && (
           <V3CommandQueue
           queueState={queue.state}
           onRetry={commandId => { void queue.retryCommand(commandId).catch(() => undefined); }}
-          onDiscardQueuedHeartClicks={queue.discardQueuedHeartClicks}
+          onDiscardQueuedHeartClicks={discardRejectedHeartClicks}
           onRecover={() => {
             setSnapshotError(null);
             void queue.recoverState()

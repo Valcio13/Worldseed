@@ -167,6 +167,7 @@ function sameCommand(left: GameplayCommand, right: GameplayCommand): boolean {
   const normalize = (command: GameplayCommand): string => {
     switch (command.type) {
       case 'heart-click':
+        return JSON.stringify([command.type, command.quantity ?? 1]);
       case 'sync':
         return JSON.stringify([command.type]);
       case 'buy-habitat':
@@ -185,6 +186,7 @@ function sameCommand(left: GameplayCommand, right: GameplayCommand): boolean {
 function canonicalCommand(command: GameplayCommand): GameplayCommand {
   switch (command.type) {
     case 'heart-click':
+      return { type: command.type, quantity: command.quantity ?? 1 };
     case 'sync':
       return { type: command.type };
     case 'buy-habitat':

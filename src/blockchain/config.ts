@@ -1,18 +1,31 @@
 import { createConfig, http } from 'wagmi';
 import { injected } from 'wagmi/connectors';
-import { hemiSepolia } from 'viem/chains';
+import { hemi, hemiSepolia } from 'viem/chains';
 import { isAddress, parseAbi } from 'viem';
 
-export const wagmiConfig = createConfig({
-  chains: [hemiSepolia],
-  connectors: [injected()],
-  transports: { [hemiSepolia.id]: http() },
-});
+// The build explicitly selects one Hemi network. Unknown/omitted values retain
+// the existing Sepolia default so local development cannot silently target mainnet.
+export const IS_HEMI_MAINNET = import.meta.env.VITE_WORLDSEED_NETWORK === 'hemi-mainnet';
+const targetChain = IS_HEMI_MAINNET ? hemi : hemiSepolia;
 
-export const TARGET_CHAIN_ID = hemiSepolia.id;
-export const TARGET_CHAIN_NAME = hemiSepolia.name;
+export const wagmiConfig = IS_HEMI_MAINNET
+  ? createConfig({
+      chains: [hemi],
+      connectors: [injected()],
+      transports: { [hemi.id]: http() },
+    })
+  : createConfig({
+      chains: [hemiSepolia],
+      connectors: [injected()],
+      transports: { [hemiSepolia.id]: http() },
+    });
 
-const address = import.meta.env.VITE_WORLDSEED_CONTRACT_ADDRESS;
+export const TARGET_CHAIN_ID = targetChain.id;
+export const TARGET_CHAIN_NAME = targetChain.name;
+
+const address = IS_HEMI_MAINNET
+  ? import.meta.env.VITE_WORLDSEED_MAINNET_CONTRACT_ADDRESS
+  : import.meta.env.VITE_WORLDSEED_CONTRACT_ADDRESS;
 export const gameContractAddress = address && isAddress(address) ? address : undefined;
 
 export const gameContractAbi = parseAbi([

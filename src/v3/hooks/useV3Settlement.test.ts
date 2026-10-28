@@ -19,7 +19,11 @@ vi.mock('wagmi', () => ({
   useReadContract: vi.fn(),
   useWriteContract: vi.fn(),
 }));
-vi.mock('../../blockchain/config', () => ({ TARGET_CHAIN_ID: 743_111 }));
+vi.mock('../../blockchain/config', () => ({
+  IS_HEMI_MAINNET: false,
+  TARGET_CHAIN_ID: 743_111,
+  TARGET_CHAIN_NAME: 'Hemi Sepolia',
+}));
 vi.mock('../config', () => ({
   v3ContractAddress: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
   v3ContractAbi: [],
@@ -49,18 +53,23 @@ beforeEach(() => {
     waitForTransactionReceipt: mocks.waitForTransactionReceipt,
     getTransactionReceipt: mocks.getTransactionReceipt,
   } as never);
-  vi.mocked(useWriteContract).mockReturnValue({ writeContractAsync: mocks.writeContractAsync } as never);
-  vi.mocked(useReadContract).mockImplementation(((options: { functionName?: string } | undefined) => {
+  vi.mocked(useWriteContract).mockReturnValue({
+    writeContractAsync: mocks.writeContractAsync,
+  } as never);
+  vi.mocked(useReadContract).mockImplementation(((
+    options: { functionName?: string } | undefined,
+  ) => {
     const functionName = (options as { functionName: string }).functionName;
-    const data = functionName === 'activeRunId'
-      ? 7n
-      : functionName === 'currentSeasonId'
-        ? 42n
-        : functionName === 'attestationNonce'
-          ? 9n
-          : functionName === 'runs'
-            ? [42n, 1, 123n, 0, 1, zeroHash]
-            : 0n;
+    const data =
+      functionName === 'activeRunId'
+        ? 7n
+        : functionName === 'currentSeasonId'
+          ? 42n
+          : functionName === 'attestationNonce'
+            ? 9n
+            : functionName === 'runs'
+              ? [42n, 1, 123n, 0, 1, zeroHash]
+              : 0n;
     let refetch = mocks.refetchers.get(functionName);
     if (!refetch) {
       refetch = vi.fn(async () => ({ data }));
@@ -111,9 +120,12 @@ describe('useV3Settlement pending receipt recovery', () => {
 
     expect(result.current.status).toBe('uncertain');
     expect(result.current.canSettle).toBe(false);
-    expect(JSON.parse(localStorage.getItem(`worldseed:v3:pending-settlement:${wallet}`) ?? 'null'))
-      .toMatchObject({ wallet, action: 'recordPoints', transactionHash });
-    await expect(result.current.recordPoints()).rejects.toThrow(/previous settlement transaction is still pending/i);
+    expect(
+      JSON.parse(localStorage.getItem(`worldseed:v3:pending-settlement:${wallet}`) ?? 'null'),
+    ).toMatchObject({ wallet, action: 'recordPoints', transactionHash });
+    await expect(result.current.recordPoints()).rejects.toThrow(
+      /previous settlement transaction is still pending/i,
+    );
     expect(mocks.writeContractAsync).toHaveBeenCalledOnce();
 
     await waitFor(() => expect(mocks.getTransactionReceipt).toHaveBeenCalled());

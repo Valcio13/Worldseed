@@ -19,6 +19,8 @@ const COMMAND_TYPE_LABELS: Record<string, string> = {
   sync: 'Sync',
   'buy-habitat': 'Buy Habitat',
   'buy-temporary-upgrade': 'Buy Upgrade',
+  'buy-fertile-soil': 'Fertile Soil',
+  'buy-time-bloom': 'Time Bloom',
 };
 
 function formatTime(timestamp: number): string {

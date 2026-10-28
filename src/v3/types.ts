@@ -260,7 +260,9 @@ export type V3GameplayCommand =
       habitat: V3HabitatKind;
       milestone: V3HabitatUpgradeMilestone;
     }
-  | { type: 'buy-temporary-upgrade'; upgrade: 'sunny-season' | 'deep-roots' };
+  | { type: 'buy-temporary-upgrade'; upgrade: 'sunny-season' | 'deep-roots' | 'nature-surge' }
+  | { type: 'buy-fertile-soil' }
+  | { type: 'buy-time-bloom' };
 
 export interface V3CommandReceipt {
   accepted: boolean;
@@ -280,12 +282,16 @@ export interface V3RunCursor {
 }
 
 export interface V3CanonicalState {
-  rulesVersion: 1 | 2;
+  rulesVersion: 1 | 2 | 3;
   natureAtoms: string;
   earnedNatureAtoms: string;
   habitats: Partial<Record<V3HabitatKind, number>>;
   habitatProductionUpgrades?: Partial<Record<V3HabitatKind, V3HabitatUpgradeMilestone[]>>;
   upgrades: Record<V3UpgradeKind, number>;
+  /** Rules V3-only run state; absent for immutable V1/V2 saves. */
+  temporaryMs?: Partial<Record<'sunny-season' | 'deep-roots' | 'nature-surge', number>>;
+  fertileSoilLevel?: number;
+  timeBloomUsed?: boolean;
 }
 
 export interface V3VerifierError {

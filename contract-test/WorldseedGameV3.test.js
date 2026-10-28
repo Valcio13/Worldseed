@@ -72,7 +72,7 @@ async function signAttestation(game, signer, overrides = {}) {
     nonce: await game.read.attestationNonce([player.account.address]),
     issuedAt,
     expiresAt: issuedAt + 300n < end ? issuedAt + 300n : end,
-    rulesVersion: 1,
+    rulesVersion: Number(await game.read.activeRulesVersion()),
     signerEpoch: await game.read.signerEpoch(),
     upgradeChoicesHash: ZERO_HASH,
     actionType: 1,
@@ -114,7 +114,7 @@ async function start(game, signer = attester, overrides = {}, choices = []) {
   return { data, signature, receipt };
 }
 
-async function activateVersion2(game, overrides = {}) {
+async function activateVersion4(game, overrides = {}) {
   const currentSeason = await game.read.currentSeasonId();
   const end = await game.read.seasonEnd([currentSeason]);
   const now = (await publicClient.getBlock()).timestamp;
@@ -133,11 +133,21 @@ async function activateVersion2(game, overrides = {}) {
     cpMilestoneStep: 7,
     ...overrides,
   };
-  await game.write.proposeRewardRules([2, rules], { account: owner.account });
+  await game.write.proposeRewardRules([4, rules], { account: owner.account });
+  await expectRevert(game.write.activateRewardRules([4], { account: owner.account }));
+  assert.equal(await game.read.activeRulesVersion(), 3);
   await testClient.increaseTime({ seconds: 2 * 24 * 60 * 60 + 1 });
   await testClient.mine({ blocks: 1 });
-  await game.write.activateRewardRules([2], { account: owner.account });
+  await game.write.activateRewardRules([4], { account: owner.account });
+  assert.equal(await game.read.activeRulesVersion(), 4);
 }
+
+it('starts fresh deployments with canonical Rules V3 active and the approved reward tuple', async () => {
+  const game = await deploy();
+  assert.equal(await game.read.activeRulesVersion(), 3);
+  assert.deepEqual(await game.read.rewardRules([1]), [35, 10, 1_000, 1, 100_000, 100_000, 100, 7]);
+  assert.deepEqual(await game.read.rewardRules([3]), [42, 10, 1_000, 1, 100_000, 100_000, 100, 7]);
+});
 
 async function action(game, functionName, signer, actionType, overrides = {}) {
   const { data, signature } = await signAttestation(game, signer, {
@@ -180,7 +190,7 @@ it('matches the published EIP-712 digest and atomically applies committed PP upg
   const game = await deploy();
   // Seed one PP through the only award path, then spend it at the next Start Run.
   await start(game);
-  await action(game, 'rebirth', attester, 3, { scoreTier: 35 });
+  await action(game, 'rebirth', attester, 3, { scoreTier: 42 });
   const beforePP = await game.read.seasonalPP([
     player.account.address,
     await game.read.currentSeasonId(),
@@ -203,7 +213,7 @@ it('matches the published EIP-712 digest and atomically applies committed PP upg
   );
   assert.equal(await game.read.seasonalUpgradeLevel([player.account.address, data.seasonId, 0]), 1);
   const run = await game.read.runs([player.account.address, 2n]);
-  assert.equal(run[4], 1);
+  assert.equal(run[4], 3);
   assert.equal(run[5], choiceHash);
 });
 
@@ -271,7 +281,7 @@ it('rejects invalid bindings, signatures, expiry, malformed choices, and overspe
 it('rejects a correctly committed upgrade batch that exceeds seasonal PP, preserving nonce and levels', async () => {
   const game = await deploy();
   await start(game);
-  await action(game, 'rebirth', attester, 3, { scoreTier: 35 });
+  await action(game, 'rebirth', attester, 3, { scoreTier: 42 });
   const season = await game.read.currentSeasonId();
   assert.equal(await game.read.seasonalPP([player.account.address, season]), 1n);
   const choices = [{ upgradeId: 0, quantity: 2 }];
@@ -321,15 +331,15 @@ it('enforces monotonic checkpoints and settles exactly once; rebirth needs no pr
   assert.equal(receipt.status, 'success');
   const season = await game.read.currentSeasonId();
   assert.equal(await game.read.seasonalPP([player.account.address, season]), 1_000n);
-  assert.equal(await game.read.seasonalCP([player.account.address, season]), 9_357n);
-  assert.equal(await game.read.lifetimeCP([player.account.address]), 9_357n);
-  assert.equal(await game.read.totalSeasonCP([season]), 9_357n);
+  assert.equal(await game.read.seasonalCP([player.account.address, season]), 9_356n);
+  assert.equal(await game.read.lifetimeCP([player.account.address]), 9_356n);
+  assert.equal(await game.read.totalSeasonCP([season]), 9_356n);
   assert.equal(await game.read.seasonalHighScoreTier([player.account.address, season]), 65_535);
   assert.equal((await game.read.runs([player.account.address, 1n]))[1], 2);
   await expectRevert(
     game.write.rebirth([rebirth.data, rebirth.signature], { account: player.account }),
   );
-  assert.equal(await game.read.lifetimeCP([player.account.address]), 9_357n);
+  assert.equal(await game.read.lifetimeCP([player.account.address]), 9_356n);
 });
 
 it('rejects below-threshold rebirth and preserves the nonce so a valid retry can settle', async () => {
@@ -339,7 +349,7 @@ it('rejects below-threshold rebirth and preserves the nonce so a valid retry can
   const weak = await signAttestation(game, attester, {
     runId: 1n,
     nonce,
-    scoreTier: 34,
+    scoreTier: 41,
     upgradeChoicesHash: ZERO_HASH,
     actionType: 3,
   });
@@ -348,7 +358,7 @@ it('rejects below-threshold rebirth and preserves the nonce so a valid retry can
   const valid = await signAttestation(game, attester, {
     runId: 1n,
     nonce,
-    scoreTier: 35,
+    scoreTier: 42,
     upgradeChoicesHash: ZERO_HASH,
     actionType: 3,
   });
@@ -362,16 +372,16 @@ it('awards CP once per new seasonal seven-tier milestone and none for repeated s
 
   await start(game);
   await action(game, 'rebirth', attester, 3, {
-    scoreTier: 42,
+    scoreTier: 49,
     natureCollectedAtoms: 1_200_000_000_000_000n,
   });
   assert.equal(await game.read.seasonalCP([player.account.address, season]), 1n);
-  assert.equal(await game.read.seasonalHighScoreTier([player.account.address, season]), 42);
+  assert.equal(await game.read.seasonalHighScoreTier([player.account.address, season]), 49);
 
   await start(game, attester, { runId: 2n });
   await action(game, 'rebirth', attester, 3, {
     runId: 2n,
-    scoreTier: 42,
+    scoreTier: 49,
     natureCollectedAtoms: 2_450_000_000_000_000n,
   });
   assert.equal(await game.read.seasonalCP([player.account.address, season]), 1n);
@@ -379,19 +389,19 @@ it('awards CP once per new seasonal seven-tier milestone and none for repeated s
   await start(game, attester, { runId: 3n });
   await action(game, 'rebirth', attester, 3, {
     runId: 3n,
-    scoreTier: 56,
+    scoreTier: 63,
     natureCollectedAtoms: 3_800_000_000_000_000n,
   });
   assert.equal(await game.read.seasonalCP([player.account.address, season]), 3n);
-  assert.equal(await game.read.seasonalHighScoreTier([player.account.address, season]), 56);
+  assert.equal(await game.read.seasonalHighScoreTier([player.account.address, season]), 63);
   assert.equal(
     await game.read.lifetimeNatureCollectedAtoms([player.account.address]),
     7_450_000_000_000_000n,
   );
-  assert.equal(await game.read.totalAccumulatedRebirthScore([player.account.address]), 140n);
+  assert.equal(await game.read.totalAccumulatedRebirthScore([player.account.address]), 161n);
   assert.equal(
     await game.read.seasonalAccumulatedRebirthScore([player.account.address, season]),
-    140n,
+    161n,
   );
 });
 
@@ -452,7 +462,7 @@ it('saturates lifetime Nature atom totals without blocking a valid later Rebirth
   assert.equal(await game.read.totalAccumulatedRebirthScore([player.account.address]), 84n);
 });
 
-it('uses V1/V2 run-pinned thresholds and shares the high-water across a rules-version switch', async () => {
+it('pins Rules V3 runs across a future-version activation and shares the high-water', async () => {
   const game = await deploy();
   const initialSeason = await game.read.currentSeasonId();
   const seasonEnd = await game.read.seasonEnd([initialSeason]);
@@ -462,62 +472,62 @@ it('uses V1/V2 run-pinned thresholds and shares the high-water across a rules-ve
     await testClient.mine({ blocks: 1 });
   }
   await start(game);
-  await activateVersion2(game);
+  await activateVersion4(game, { rebirthThresholdTier: 56 });
 
-  // The active V1 run keeps its V1 threshold after V2 becomes active.
+  // The active V3 run keeps its threshold after version 4 becomes active.
   await action(game, 'rebirth', attester, 3, {
     runId: 1n,
-    rulesVersion: 1,
-    scoreTier: 42,
+    rulesVersion: 3,
+    scoreTier: 49,
     natureCollectedAtoms: 10n,
   });
   const season = await game.read.currentSeasonId();
   assert.equal(await game.read.seasonalCP([player.account.address, season]), 1n);
 
-  await start(game, attester, { runId: 2n, rulesVersion: 2 });
+  await start(game, attester, { runId: 2n, rulesVersion: 4 });
   const nonce = await game.read.attestationNonce([player.account.address]);
-  const belowV2 = await signAttestation(game, attester, {
+  const belowV4 = await signAttestation(game, attester, {
     runId: 2n,
     nonce,
-    rulesVersion: 2,
-    scoreTier: 41,
+    rulesVersion: 4,
+    scoreTier: 55,
     upgradeChoicesHash: ZERO_HASH,
     actionType: 3,
   });
   await expectRevert(
-    game.write.rebirth([belowV2.data, belowV2.signature], { account: player.account }),
+    game.write.rebirth([belowV4.data, belowV4.signature], { account: player.account }),
   );
   assert.equal(await game.read.attestationNonce([player.account.address]), nonce);
 
   await action(game, 'rebirth', attester, 3, {
     runId: 2n,
-    rulesVersion: 2,
-    scoreTier: 49,
+    rulesVersion: 4,
+    scoreTier: 63,
     natureCollectedAtoms: 20n,
   });
   assert.equal(await game.read.seasonalCP([player.account.address, season]), 2n);
-  assert.equal(await game.read.seasonalHighScoreTier([player.account.address, season]), 49);
+  assert.equal(await game.read.seasonalHighScoreTier([player.account.address, season]), 63);
   assert.equal(await game.read.lifetimeNatureCollectedAtoms([player.account.address]), 30n);
-  assert.equal(await game.read.totalAccumulatedRebirthScore([player.account.address]), 91n);
+  assert.equal(await game.read.totalAccumulatedRebirthScore([player.account.address]), 112n);
   assert.equal(
     await game.read.seasonalAccumulatedRebirthScore([player.account.address, season]),
-    91n,
+    112n,
   );
 });
 
 it('settles a valid Rebirth with partial or zero PP/CP when season caps are reached', async () => {
   const game = await deploy();
-  await activateVersion2(game, { seasonPPCap: 1, seasonCPCap: 1 });
+  await activateVersion4(game, { seasonPPCap: 1, seasonCPCap: 1 });
   const season = await game.read.currentSeasonId();
-  await start(game, attester, { runId: 1n, rulesVersion: 2 });
-  await action(game, 'rebirth', attester, 3, { runId: 1n, rulesVersion: 2, scoreTier: 56 });
+  await start(game, attester, { runId: 1n, rulesVersion: 4 });
+  await action(game, 'rebirth', attester, 3, { runId: 1n, rulesVersion: 4, scoreTier: 56 });
   assert.equal(await game.read.seasonalPP([player.account.address, season]), 1n);
   assert.equal(await game.read.seasonalCP([player.account.address, season]), 1n);
 
-  await start(game, attester, { runId: 2n, rulesVersion: 2 });
+  await start(game, attester, { runId: 2n, rulesVersion: 4 });
   const settled = await action(game, 'rebirth', attester, 3, {
     runId: 2n,
-    rulesVersion: 2,
+    rulesVersion: 4,
     scoreTier: 70,
   });
   assert.equal(settled.status, 'success');
@@ -531,8 +541,8 @@ it('starts a fresh seasonal high-water after rollover without carrying seasonal 
   const game = await deploy();
   const oldSeason = await game.read.currentSeasonId();
   await start(game);
-  await action(game, 'rebirth', attester, 3, { scoreTier: 42 });
-  assert.equal(await game.read.seasonalHighScoreTier([player.account.address, oldSeason]), 42);
+  await action(game, 'rebirth', attester, 3, { scoreTier: 49 });
+  assert.equal(await game.read.seasonalHighScoreTier([player.account.address, oldSeason]), 49);
 
   const end = await game.read.seasonEnd([oldSeason]);
   const now = (await publicClient.getBlock()).timestamp;
@@ -546,20 +556,20 @@ it('starts a fresh seasonal high-water after rollover without carrying seasonal 
   assert.equal(await game.read.seasonalCP([player.account.address, newSeason]), 0n);
   assert.equal(
     await game.read.seasonalAccumulatedRebirthScore([player.account.address, oldSeason]),
-    42n,
+    49n,
   );
-  assert.equal(await game.read.totalAccumulatedRebirthScore([player.account.address]), 42n);
+  assert.equal(await game.read.totalAccumulatedRebirthScore([player.account.address]), 49n);
 
   await start(game, attester, { runId: 2n });
-  await action(game, 'rebirth', attester, 3, { runId: 2n, scoreTier: 42 });
-  assert.equal(await game.read.seasonalHighScoreTier([player.account.address, newSeason]), 42);
+  await action(game, 'rebirth', attester, 3, { runId: 2n, scoreTier: 49 });
+  assert.equal(await game.read.seasonalHighScoreTier([player.account.address, newSeason]), 49);
   assert.equal(await game.read.seasonalCP([player.account.address, newSeason]), 1n);
   assert.equal(await game.read.lifetimeCP([player.account.address]), 2n);
   assert.equal(
     await game.read.seasonalAccumulatedRebirthScore([player.account.address, newSeason]),
-    42n,
+    49n,
   );
-  assert.equal(await game.read.totalAccumulatedRebirthScore([player.account.address]), 84n);
+  assert.equal(await game.read.totalAccumulatedRebirthScore([player.account.address]), 98n);
 });
 
 it('rejects a signature that expires before mining without consuming its run ID or nonce', async () => {

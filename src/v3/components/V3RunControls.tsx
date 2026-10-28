@@ -8,6 +8,7 @@ import { useState } from 'react';
 import type { V3RunState, V3UpgradeKind, TransactionState } from '../types';
 import { V3_UPGRADE_CONFIG } from '../types';
 import { ppUpgradeCost } from '../../incremental/rulesV1';
+import { TARGET_NETWORK_LABEL, V3_CONTRACT_ADDRESS_ENV } from '../../blockchain/networkPresentation';
 
 interface V3RunControlsProps {
   runState: V3RunState;
@@ -108,7 +109,7 @@ export function V3RunControls({
           </span>
           <div>
             <strong>V3 Not Configured</strong>
-            <p>Set VITE_WORLDSEED_V3_CONTRACT_ADDRESS to enable verified runs.</p>
+            <p>Set {V3_CONTRACT_ADDRESS_ENV} to enable verified runs.</p>
           </div>
         </div>
       </div>
@@ -142,7 +143,7 @@ export function V3RunControls({
           </span>
           <div>
             <strong>Wrong Network</strong>
-            <p>Switch to Hemi Sepolia to access V3 verified runs.</p>
+            <p>Switch to {TARGET_NETWORK_LABEL} to access V3 verified runs.</p>
           </div>
         </div>
       </div>

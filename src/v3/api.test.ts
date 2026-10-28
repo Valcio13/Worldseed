@@ -641,6 +641,11 @@ describe('V3 API - HTTP Methods and Paths', () => {
         type: 'buy-temporary-upgrade',
         upgrade: 'sunny-season',
       });
+      expect(
+        translateGameplayCommand({ type: 'buy-temporary-upgrade', upgrade: 'nature-surge' }),
+      ).toEqual({ type: 'buy-temporary-upgrade', upgrade: 'nature-surge' });
+      expect(translateGameplayCommand({ type: 'buy-fertile-soil' })).toEqual({ type: 'buy-fertile-soil' });
+      expect(translateGameplayCommand({ type: 'buy-time-bloom' })).toEqual({ type: 'buy-time-bloom' });
     });
 
     it('should reject unsupported commands with explicit error messages', async () => {

@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { valueFromNumber } from '../incremental/decimal';
 import { createEconomyState, type EconomyState } from '../incremental/engine';
 import { seasonIdAt } from '../incremental/season';
-import { initialLivingIslandMode, LivingIslandGame } from './LivingIslandGame';
+import { LivingIslandGame } from './LivingIslandGame';
+import { initialLivingIslandMode } from './livingIslandMode';
 import * as islandAudio from '../game/sound';
 import { updateAudioPreferences } from '../game/sound';
 
@@ -15,13 +16,56 @@ const mocks = vi.hoisted(() => ({
   walletConnected: false,
   walletAddress: undefined as string | undefined,
   chainId: 0,
+  v3Enabled: false,
   clearAuthSession: vi.fn(),
   disconnect: vi.fn(),
 }));
 
 vi.mock('../persistence/localSave', () => mocks);
-vi.mock('../integration/featureFlags', () => ({ isV3IdleIntegrationEnabled: () => false }));
+vi.mock('../integration/featureFlags', () => ({
+  isV3IdleIntegrationEnabled: () => mocks.v3Enabled,
+}));
 vi.mock('../v3/hooks/useV3Auth', () => ({ clearV3AuthSession: mocks.clearAuthSession }));
+vi.mock('./V3IntegrationShell', async () => {
+  const React = await import('react');
+  return {
+    V3IslandProgression: ({ onProfileChange }: { onProfileChange: (profile: unknown) => void }) => {
+      React.useEffect(() => {
+        onProfileChange({
+          activeRun: false,
+          runId: null,
+          authenticated: false,
+          ready: true,
+          seasonalPP: '0',
+          seasonalCP: '0',
+          rewardRules: {
+            rebirthThresholdTier: 35,
+            ppStep: 10,
+            ppPerRebirthCap: 100n,
+            ppBase: 1n,
+            seasonPPCap: 100_000n,
+            seasonCPCap: 100_000n,
+            cpMilestoneStep: 7,
+          },
+          totalSeasonCP: '0',
+          maxSeasonPoints: '1000000',
+          lifetimeCP: '0',
+          lifetimeNature: '0',
+          accumulatedScore: '0',
+          seasonalAccumulatedScore: '0',
+          seasonalHighScoreTier: 0,
+          nextCpMilestoneTier: 42,
+          rebirthThresholdTier: 35,
+          seasonRebirths: 0,
+          upgradeLevels: { growth: 0, efficiency: 0, awakening: 0, rebirth: 0 },
+          wallet: null,
+          error: null,
+        });
+      }, [onProfileChange]);
+      return React.createElement('span', { 'data-testid': 'mock-v3-progression' });
+    },
+  };
+});
 vi.mock('wagmi', () => ({
   useAccount: () => ({ isConnected: mocks.walletConnected, address: mocks.walletAddress }),
   useChainId: () => mocks.chainId,
@@ -38,6 +82,7 @@ beforeEach(() => {
   mocks.walletConnected = false;
   mocks.walletAddress = undefined;
   mocks.chainId = 0;
+  mocks.v3Enabled = false;
   localStorage.removeItem('worldseed:play-mode:v1');
   vi.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   updateAudioPreferences({ musicEnabled: false, muted: false });
@@ -52,6 +97,24 @@ afterEach(() => {
 });
 
 describe('Living Island guest persistence', () => {
+  it('accepts a Live profile with bigint reward rules without crashing serialization', async () => {
+    mocks.v3Enabled = true;
+    localStorage.setItem('worldseed:play-mode:v1', 'live');
+    mocks.loadGuestSave.mockResolvedValue({ kind: 'empty' });
+    mocks.saveGuestSave.mockResolvedValue(undefined);
+
+    render(<LivingIslandGame />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('mock-v3-progression')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Live' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('VERIFIED RUN')).toBeInTheDocument();
+  });
+
   it('clears Live authentication when explicitly disconnecting from Guest mode', async () => {
     mocks.walletConnected = true;
     mocks.walletAddress = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd';
@@ -85,7 +148,9 @@ describe('Living Island guest persistence', () => {
     mocks.saveGuestSave.mockResolvedValue(undefined);
     const play = vi
       .spyOn(window.HTMLMediaElement.prototype, 'play')
-      .mockRejectedValueOnce(Object.assign(new Error('Autoplay blocked'), { name: 'NotAllowedError' }))
+      .mockRejectedValueOnce(
+        Object.assign(new Error('Autoplay blocked'), { name: 'NotAllowedError' }),
+      )
       .mockResolvedValue(undefined);
     vi.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
     render(<LivingIslandGame />);
@@ -138,7 +203,9 @@ describe('Living Island guest persistence', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(180);
     });
-    expect(screen.queryByText('Welcome back. Your island grew while you were away.')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Welcome back. Your island grew while you were away.'),
+    ).not.toBeInTheDocument();
   });
 
   it('loads the guest save path and saves Heart progress through the existing save API', async () => {

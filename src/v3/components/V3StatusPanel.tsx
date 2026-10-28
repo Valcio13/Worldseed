@@ -6,6 +6,7 @@
 
 import { useMemo } from 'react';
 import type { V3RunState } from '../types';
+import { TARGET_NETWORK_LABEL, V3_CONTRACT_ADDRESS_ENV } from '../../blockchain/networkPresentation';
 
 interface V3StatusPanelProps {
   runState: V3RunState;
@@ -76,7 +77,7 @@ export function V3StatusPanel({ runState, onRefetch }: V3StatusPanelProps) {
       if (!isConfigured)
         return { label: 'V3 Not Configured', description: 'Contract address not set' };
       if (!wallet) return { label: 'Wallet Required', description: 'Connect wallet to access V3' };
-      if (!isCorrectChain) return { label: 'Wrong Network', description: 'Switch to Hemi Sepolia' };
+      if (!isCorrectChain) return { label: 'Wrong Network', description: `Switch to ${TARGET_NETWORK_LABEL}` };
     }
     return run ? STATUS_LABELS[run.status] : STATUS_LABELS.NONE;
   }, [canAccessV3, isConfigured, wallet, isCorrectChain, run]);
@@ -196,7 +197,7 @@ export function V3StatusPanel({ runState, onRefetch }: V3StatusPanelProps) {
           <span className="v3-notice-icon" aria-hidden="true">
             ⚠
           </span>
-          <span>V3 contract address not configured. Set VITE_WORLDSEED_V3_CONTRACT_ADDRESS.</span>
+          <span>V3 contract address not configured. Set {V3_CONTRACT_ADDRESS_ENV}.</span>
         </div>
       )}
 
@@ -205,7 +206,7 @@ export function V3StatusPanel({ runState, onRefetch }: V3StatusPanelProps) {
           {!wallet ? (
             <span>Connect your wallet to start a verified run.</span>
           ) : !isCorrectChain ? (
-            <span>Switch to Hemi Sepolia to access V3.</span>
+            <span>Switch to {TARGET_NETWORK_LABEL} to access V3.</span>
           ) : null}
         </div>
       )}

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as rulesV1 from '../../incremental/rulesV1';
 import * as rulesV2 from '../../incremental/rulesV2';
+import * as rulesV3 from '../../incremental/rulesV3';
 import { applyCanonicalCommand } from '../../incremental/versionedRules';
 import { productionPerSecondAtoms as productionPerSecondV1 } from '../../incremental/rulesV1';
 import { productionPerSecondAtoms as productionPerSecondV2 } from '../../incremental/rulesV2';
+import { productionPerSecondAtoms as productionPerSecondV3 } from '../../incremental/rulesV3';
 import { formatValue, type BigValue } from '../../incremental/decimal';
 import { V3ApiError } from '../api';
 import { useV3Commands } from '../hooks/useV3Commands';
@@ -14,6 +16,7 @@ import {
   habitatPurchaseCostForVerifiedState,
   habitatsForVerifiedState,
   isV1VerifiedState,
+  isV3VerifiedState,
   nextHabitatProductionMilestone,
   parseV3CanonicalState,
   purchasedHabitatProductionMilestones,
@@ -59,7 +62,22 @@ export interface V3IslandSnapshot {
       available: boolean;
     }>;
   }>;
+  verifiedNatureBoosts: {
+    natureSurgeCost: string;
+    natureSurgeRemainingMs: number;
+    canBuyNatureSurge: boolean;
+    fertileSoilLevel: number;
+    fertileSoilMaxLevel: number;
+    fertileSoilNextCost: string | null;
+    canBuyFertileSoil: boolean;
+    timeBloomUsed: boolean;
+    timeBloomCost: string | null;
+    canBuyTimeBloom: boolean;
+    timeBloomUnavailableReason?: string | null;
+  } | null;
 }
+
+const RUN_CONFIRMATION_RECOVERY_WINDOW_MS = 60_000;
 
 export interface V3IslandActionHandlers {
   pending: boolean;
@@ -67,6 +85,10 @@ export interface V3IslandActionHandlers {
   pendingHeartClicks: number;
   buyHabitat: (habitat: V3HabitatKind, quantity: number) => void;
   buyProductionUpgrade: (habitat: V3HabitatKind) => void;
+  buyNatureSurge: () => void;
+  buyFertileSoil: () => void;
+  buyTimeBloom: () => void;
+  sendGameplayCommand: (command: V3GameplayCommand) => void;
   flushPendingCommands: () => Promise<void>;
 }
 
@@ -149,8 +171,9 @@ function maxAffordableQuantity(state: V3VerifiedCanonicalState, habitat: V3Habit
 }
 
 function productionPerSecond(state: V3VerifiedCanonicalState): bigint {
-  return isV1VerifiedState(state)
-    ? productionPerSecondV1(state)
+  if (isV1VerifiedState(state)) return productionPerSecondV1(state);
+  return isV3VerifiedState(state)
+    ? productionPerSecondV3(state)
     : productionPerSecondV2(state);
 }
 
@@ -158,9 +181,17 @@ function projectNatureForDisplay(
   state: V3VerifiedCanonicalState,
   nowMs = Date.now(),
 ): V3VerifiedCanonicalState {
-  const displayTimeMs = Math.min(nowMs, rulesV1.seasonEndAtMilliseconds(state.seasonId));
+  const seasonEnd = rulesV1.seasonEndAtMilliseconds(state.seasonId);
+  const displayTimeMs = Math.min(nowMs, seasonEnd - 1);
   const elapsedMs = Math.max(0, displayTimeMs - state.lastServerTimeMs);
   if (elapsedMs === 0) return state;
+  if (isV3VerifiedState(state)) {
+    try {
+      return rulesV3.advanceCanonicalRun(state, displayTimeMs);
+    } catch {
+      return state;
+    }
+  }
   const estimatedAtoms =
     state.natureAtoms + (productionPerSecond(state) * BigInt(elapsedMs)) / 1_000n;
   return { ...state, natureAtoms: estimatedAtoms };
@@ -174,11 +205,11 @@ function toIslandSnapshot(
 ): V3IslandSnapshot {
   const displayState = projectNatureForDisplay(next.state, nowMs);
   const estimatedNatureAtoms = displayState.natureAtoms;
-  const habitats = habitatsForVerifiedState(next.state).map((id) => {
-    const level = habitatLevelForVerifiedState(next.state, id) ?? 0;
-    const nextCost = habitatPurchaseCostForVerifiedState(next.state, id, 1);
-    const upgrades = purchasedHabitatProductionMilestones(next.state, id);
-    const nextMilestone = nextHabitatProductionMilestone(next.state, id);
+  const habitats = habitatsForVerifiedState(displayState).map((id) => {
+    const level = habitatLevelForVerifiedState(displayState, id) ?? 0;
+    const nextCost = habitatPurchaseCostForVerifiedState(displayState, id, 1);
+    const upgrades = purchasedHabitatProductionMilestones(displayState, id);
+    const nextMilestone = nextHabitatProductionMilestone(displayState, id);
     return {
       id,
       level,
@@ -186,7 +217,7 @@ function toIslandSnapshot(
       canBuyOne: nextCost !== null && nextCost <= estimatedNatureAtoms,
       maxAffordable: maxAffordableQuantity({ ...displayState, natureAtoms: estimatedNatureAtoms }, id),
       purchasedUpgradeCount: upgrades.length,
-      productionUpgrades: isV1VerifiedState(next.state)
+      productionUpgrades: isV1VerifiedState(displayState)
         ? []
         : rulesV2.HABITAT_UPGRADE_MILESTONES.map((milestone) => {
             const cost = rulesV2.habitatProductionUpgradeCost(id as rulesV2.Habitat, milestone);
@@ -200,11 +231,15 @@ function toIslandSnapshot(
           }),
     };
   });
+  const v3State = isV3VerifiedState(displayState) ? displayState : null;
+  const natureSurgeCostAtoms = rulesV3.temporaryUpgradeCostAtoms('nature-surge');
+  const fertileSoilNextCostAtoms = v3State ? rulesV3.fertileSoilCostAtoms(v3State) : null;
+  const timeBloomCostAtoms = v3State ? rulesV3.timeBloomCostAtoms(v3State) : null;
   return {
     nature: formatNatureAtoms(confirmedState?.natureAtoms ?? next.state.natureAtoms),
     estimatedNature: formatNatureAtoms(estimatedNatureAtoms),
     earnedNature: formatNatureAtoms(next.state.earnedNatureAtoms),
-    productionPerSecond: formatNatureAtoms(productionPerSecond(next.state)),
+    productionPerSecond: formatNatureAtoms(productionPerSecond(displayState)),
     visualHabitatLevelCount: Object.values(next.state.habitats).reduce(
       (total, level) => (total >= 15 - level ? 15 : total + level),
       0,
@@ -213,6 +248,30 @@ function toIslandSnapshot(
     rulesVersion: next.state.rulesVersion,
     pendingHeartClicks,
     habitats,
+    verifiedNatureBoosts: v3State ? {
+      natureSurgeCost: formatNatureAtoms(natureSurgeCostAtoms),
+      natureSurgeRemainingMs: v3State.temporaryMs['nature-surge'],
+      canBuyNatureSurge:
+        v3State.status === 'active' && estimatedNatureAtoms >= natureSurgeCostAtoms,
+      fertileSoilLevel: v3State.fertileSoilLevel,
+      fertileSoilMaxLevel: rulesV3.FERTILE_SOIL_MAX_LEVEL,
+      fertileSoilNextCost:
+        fertileSoilNextCostAtoms === null ? null : formatNatureAtoms(fertileSoilNextCostAtoms),
+      canBuyFertileSoil:
+        v3State.status === 'active' &&
+        v3State.fertileSoilLevel < rulesV3.FERTILE_SOIL_MAX_LEVEL &&
+        fertileSoilNextCostAtoms !== null && estimatedNatureAtoms >= fertileSoilNextCostAtoms,
+      timeBloomUsed: v3State.timeBloomUsed,
+      timeBloomCost: timeBloomCostAtoms === null ? null : formatNatureAtoms(timeBloomCostAtoms),
+      canBuyTimeBloom:
+        v3State.status === 'active' &&
+        !v3State.timeBloomUsed &&
+        productionPerSecond(v3State) > 0n &&
+        timeBloomCostAtoms !== null && estimatedNatureAtoms >= timeBloomCostAtoms,
+      timeBloomUnavailableReason:
+        v3State.timeBloomUsed ? 'Already used this run.' :
+        productionPerSecond(v3State) === 0n ? 'Build a habitat first.' : null,
+    } : null,
   };
 }
 
@@ -268,6 +327,7 @@ export function V3VerifiedGameplay({
   useEffect(() => {
     let current = true;
     let retryTimer: number | undefined;
+    const retryUntil = Date.now() + RUN_CONFIRMATION_RECOVERY_WINDOW_MS;
     const sync = async () => {
       try {
         const recovery = await recoverState();
@@ -284,6 +344,12 @@ export function V3VerifiedGameplay({
         }
       } catch (error) {
         if (!current) return;
+        const awaitingRunConfirmation =
+          error instanceof V3ApiError && error.code === 'RUN_NOT_FOUND';
+        if (awaitingRunConfirmation && Date.now() < retryUntil) {
+          retryTimer = window.setTimeout(() => void sync(), 1_500);
+          return;
+        }
         const retryable = !(error instanceof V3ApiError) ||
           error.code === 'RECOVERY_FAILED' || error.status === 429 || error.status >= 500;
         if (retryable) {
@@ -292,7 +358,9 @@ export function V3VerifiedGameplay({
             void sync();
           }, 1_500);
         } else {
-          setSnapshotError(error instanceof Error ? error.message : 'Could not recover Live run.');
+          setSnapshotError(awaitingRunConfirmation
+            ? 'The verifier has not confirmed this run yet. Retry recovery in a moment.'
+            : error instanceof Error ? error.message : 'Could not recover Live run.');
         }
       }
     };
@@ -385,6 +453,26 @@ export function V3VerifiedGameplay({
     if (command) send(command);
   }, [queue.state?.commands, queue.state?.queuedHeartClicks, send, snapshot]);
 
+  const sendV3BoostCommand = useCallback((command: V3GameplayCommand) => {
+    if (!snapshot || !isV3VerifiedState(snapshot.state) || snapshot.state.status !== 'active') return;
+    const projected = projectQueuedGameplay(
+      snapshot,
+      queue.state?.commands ?? [],
+      queue.state?.queuedHeartClicks ?? 0,
+    ).state;
+    try {
+      applyCanonicalCommand(projected, command, Math.max(Date.now(), projected.lastServerTimeMs));
+      send(command);
+    } catch {
+      // Use the same canonical rules for immediate affordances; verifier remains authoritative.
+    }
+  }, [queue.state?.commands, queue.state?.queuedHeartClicks, send, snapshot]);
+  const buyNatureSurge = useCallback(() => sendV3BoostCommand({
+    type: 'buy-temporary-upgrade', upgrade: 'nature-surge',
+  }), [sendV3BoostCommand]);
+  const buyFertileSoil = useCallback(() => sendV3BoostCommand({ type: 'buy-fertile-soil' }), [sendV3BoostCommand]);
+  const buyTimeBloom = useCallback(() => sendV3BoostCommand({ type: 'buy-time-bloom' }), [sendV3BoostCommand]);
+
   useEffect(() => {
     onActionHandlersReady?.(snapshot ? {
       pending: actionsDisabled,
@@ -392,10 +480,14 @@ export function V3VerifiedGameplay({
       pendingHeartClicks,
       buyHabitat,
       buyProductionUpgrade,
+      buyNatureSurge,
+      buyFertileSoil,
+      buyTimeBloom,
+      sendGameplayCommand: sendV3BoostCommand,
       flushPendingCommands: queue.flushPendingCommands,
     } : null);
     return () => onActionHandlersReady?.(null);
-  }, [actionsDisabled, buyHabitat, buyProductionUpgrade, heartClickPending, onActionHandlersReady, pendingHeartClicks, queue.flushPendingCommands, snapshot]);
+  }, [actionsDisabled, buyHabitat, buyProductionUpgrade, buyNatureSurge, buyFertileSoil, buyTimeBloom, sendV3BoostCommand, heartClickPending, onActionHandlersReady, pendingHeartClicks, queue.flushPendingCommands, snapshot]);
 
   useEffect(() => {
     onHeartActionReady?.(canCollectHeart ? submitHeartClick : null);

@@ -193,6 +193,29 @@ describe('Living Island verified controls', () => {
     expect(connectAsync).toHaveBeenCalledWith({ connector: { id: 'injected' } });
   });
 
+  it('opens Start Run in a dedicated scrollable dialog instead of the account dropdown', () => {
+    const address = '0x0000000000000000000000000000000000000001';
+    useV3RunMock.mockReturnValue(runState({
+      wallet: address,
+      isCorrectChain: true,
+      canAccessV3: true,
+    }));
+    useV3AuthMock.mockReturnValue(authState({
+      wallet: address,
+      isAuthenticated: true,
+      sessionToken: 'session-token',
+    }));
+
+    renderProgression();
+    fireEvent.click(screen.getByText(`${address.slice(0, 6)}…${address.slice(-4)}`));
+    fireEvent.click(screen.getByRole('button', { name: 'Start a Live run' }));
+
+    expect(screen.getByRole('dialog', { name: 'Prepare your run' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start Verified Run →' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Start Run dialog' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('ends authentication and disconnects only after the player explicitly requests it', () => {
     const address = '0x0000000000000000000000000000000000000001';
     const logout = vi.fn();

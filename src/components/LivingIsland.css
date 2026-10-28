@@ -1510,6 +1510,17 @@
   gap: 6px;
   margin-top: 8px;
 }
+.living-verified-boosts {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--living-line);
+}
+.living-verified-boosts-title {
+  margin: 0;
+  color: var(--living-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
 .living-boosts button {
   display: flex;
   align-items: center;
@@ -1630,11 +1641,17 @@
     align-self: start;
   }
   .living-control-panel {
+    position: sticky;
+    top: 82px;
     display: grid;
+    height: calc(100dvh - 96px);
+    max-height: calc(100dvh - 96px);
     min-height: 0;
+    box-sizing: border-box;
     align-content: start;
     gap: 10px;
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 2px 7px 14px 1px;
     scrollbar-gutter: stable;
     scroll-padding-block: 12px;
@@ -1697,8 +1714,8 @@
     padding-block: 9px;
   }
   .living-control-panel {
-    max-height: none;
-    overflow: visible;
+    height: calc(100dvh - 82px);
+    max-height: calc(100dvh - 82px);
   }
 }
 

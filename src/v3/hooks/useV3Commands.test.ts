@@ -813,6 +813,22 @@ describe('useV3Commands persistence and verifier behavior', () => {
     window.localStorage.clear();
   });
 
+  it('does not surface a temporary not-found cursor error while Start Run awaits confirmations', async () => {
+    vi.spyOn(v3Api, 'recoverRun').mockRejectedValue(new V3ApiError(
+      'No run exists for this authenticated wallet.',
+      'RUN_NOT_FOUND',
+      404,
+    ));
+    const { result } = renderHook(() => useV3Commands(runId, token));
+
+    await act(async () => {
+      await expect(result.current.recoverState()).rejects.toMatchObject({ code: 'RUN_NOT_FOUND' });
+    });
+
+    expect(result.current.state?.recoveringCursor).toBe(false);
+    expect(result.current.state?.recoveryError).toBeUndefined();
+  });
+
   it('persists the stable ID, exact payload, and cursor before sending', async () => {
     const payload = { type: 'buy-habitat', habitat: 'forest', quantity: 4 } as const;
     const submitSpy = vi

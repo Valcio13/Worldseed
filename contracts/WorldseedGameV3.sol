@@ -100,7 +100,7 @@ contract WorldseedGameV3 {
     uint32 public signerEpoch = 1;
     bool public paused;
 
-    uint32 public activeRulesVersion = 1;
+    uint32 public activeRulesVersion = 3;
     mapping(uint32 => RewardRules) public rewardRules;
     mapping(uint32 => PendingRules) private pendingRules;
 
@@ -188,6 +188,16 @@ contract WorldseedGameV3 {
         // Contest rules v1: tier 35 unlocks Rebirth; PP retains its existing score formula.
         rewardRules[1] = RewardRules({
             rebirthThresholdTier: V1_REBIRTH_THRESHOLD_TIER,
+            ppStep: 10,
+            ppPerRebirthCap: 1_000,
+            ppBase: 1,
+            seasonPPCap: 100_000,
+            seasonCPCap: 100_000,
+            maxUpgradeLevel: MAX_UPGRADE_LEVEL,
+            cpMilestoneStep: CP_MILESTONE_STEP
+        });
+        rewardRules[3] = RewardRules({
+            rebirthThresholdTier: V2_REBIRTH_THRESHOLD_TIER,
             ppStep: 10,
             ppPerRebirthCap: 1_000,
             ppBase: 1,

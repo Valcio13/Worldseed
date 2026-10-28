@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { V3RunState } from '../types';
 import { V3RunControls } from './V3RunControls';
+import { TARGET_NETWORK_LABEL, V3_CONTRACT_ADDRESS_ENV } from '../../blockchain/networkPresentation';
 
 function makeRunState(seasonalPP: bigint, growth = 0): V3RunState {
   return {
@@ -32,6 +33,26 @@ function makeRunState(seasonalPP: bigint, growth = 0): V3RunState {
 afterEach(cleanup);
 
 describe('V3 Start Run PP allocation', () => {
+  it('shows the selected network and its matching contract environment variable', () => {
+    render(
+      <V3RunControls
+        runState={{ ...makeRunState(0n), isCorrectChain: false, canAccessV3: false }}
+        transactionState="idle"
+      />,
+    );
+
+    expect(screen.getByText(`Switch to ${TARGET_NETWORK_LABEL} to access V3 verified runs.`)).toBeInTheDocument();
+
+    cleanup();
+    render(
+      <V3RunControls
+        runState={{ ...makeRunState(0n), isConfigured: false, canAccessV3: false }}
+        transactionState="idle"
+      />,
+    );
+    expect(screen.getByText(`Set ${V3_CONTRACT_ADDRESS_ENV} to enable verified runs.`)).toBeInTheDocument();
+  });
+
   it('limits allocation to available PP and shows the remaining balance', () => {
     const onStartRun = vi.fn(async () => undefined);
     render(

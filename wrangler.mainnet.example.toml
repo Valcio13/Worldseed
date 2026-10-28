@@ -1,0 +1,8 @@
+# Separate static frontend Worker for Hemi Mainnet; this does not replace the
+# existing worldseed Worker used by the current release.
+name = "worldseed-mainnet"
+compatibility_date = "2026-10-14"
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"

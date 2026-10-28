@@ -364,6 +364,7 @@ it('integrates wallet auth, canonical progression, checkpoint, and successful ve
   const rebirth = await request('/api/v3/runs/1/rebirth-attestation', { method: 'POST', body: {} });
   assert.equal(rebirth.status, 200, JSON.stringify(rebirth.body));
   assert.equal(rebirth.body.attestation.actionType, 'REBIRTH');
+  assert.equal(rebirth.body.attestation.rulesVersion, 3);
   assert.equal(rebirth.body.attestation.scoreTier, checkpoint.body.attestation.scoreTier);
   assert.equal(rebirth.body.attestation.natureCollectedAtoms, canonicalState.earnedNatureAtoms);
   const rebirthHash = await game.write.rebirth(
@@ -373,9 +374,13 @@ it('integrates wallet auth, canonical progression, checkpoint, and successful ve
   const rebirthReceipt = await publicClient.waitForTransactionReceipt({ hash: rebirthHash });
   assert.equal(rebirthReceipt.status, 'success');
   const seasonId = BigInt(run[0]);
+  const expectedCP = BigInt(
+    Math.floor(rebirth.body.attestation.scoreTier / 7) - Math.floor(42 / 7),
+  );
+  assert.equal(run[4], 3);
   assert.equal(await game.read.seasonalPP([player.account.address, seasonId]), 1n);
-  assert.equal(await game.read.seasonalCP([player.account.address, seasonId]), 1n);
-  assert.equal(await game.read.lifetimeCP([player.account.address]), 1n);
+  assert.equal(await game.read.seasonalCP([player.account.address, seasonId]), expectedCP);
+  assert.equal(await game.read.lifetimeCP([player.account.address]), expectedCP);
   assert.equal(
     await game.read.lifetimeNatureCollectedAtoms([player.account.address]),
     BigInt(rebirth.body.attestation.natureCollectedAtoms),

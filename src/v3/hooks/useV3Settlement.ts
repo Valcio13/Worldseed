@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAccount, useChainId, usePublicClient, useReadContract, useWriteContract } from 'wagmi';
 import type { Hex } from 'viem';
 import { TARGET_CHAIN_ID } from '../../blockchain/config';
+import { TARGET_NETWORK_LABEL } from '../../blockchain/networkPresentation';
 import {
   requireSuccessfulReceipt,
   ReplacedTransactionError,
@@ -330,7 +331,7 @@ export function useV3Settlement(sessionToken: string | null) {
           !publicClient ||
           !writeContractAsync
         )
-          throw new Error('Connect a wallet on Hemi Sepolia and configure the V3 contract first.');
+          throw new Error(`Connect a wallet on ${TARGET_NETWORK_LABEL} and configure the V3 contract first.`);
         if (!sessionToken)
           throw new Error('Wallet session expired. Authenticate again to continue.');
         if (activeRun.isLoading || season.isLoading || nonce.isLoading || run.isLoading)

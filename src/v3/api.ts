@@ -13,11 +13,14 @@ import type {
   V3UpgradeKind,
   V3GameplayCommand,
 } from './types';
+import { IS_HEMI_MAINNET } from '../blockchain/config';
 export type { V3CommandReceipt, V3RunCursor } from './types';
 
 // Base URL for API calls. Can include a path prefix (e.g., http://localhost:8788).
 // Do NOT include /api/v3 here; it will be prepended to each endpoint path.
-const API_BASE = import.meta.env.VITE_VERIFIER_API_URL || '';
+const API_BASE = IS_HEMI_MAINNET
+  ? import.meta.env.VITE_VERIFIER_API_URL_MAINNET || ''
+  : import.meta.env.VITE_VERIFIER_API_URL || '';
 
 /**
  * API Error with structured response
@@ -164,8 +167,10 @@ export function translateGameplayCommand(uiCommand: unknown): V3GameplayCommand 
   // Explicitly supported commands
   if (type === 'heart-click') {
     const quantity = cmd.quantity;
-    if (quantity !== undefined &&
-      (!Number.isSafeInteger(quantity) || (quantity as number) < 1 || (quantity as number) > 100)) {
+    if (
+      quantity !== undefined &&
+      (!Number.isSafeInteger(quantity) || (quantity as number) < 1 || (quantity as number) > 100)
+    ) {
       throw new Error('Invalid Heart batch quantity. Must be an integer from 1 through 100.');
     }
     return quantity === undefined
@@ -220,21 +225,19 @@ export function translateGameplayCommand(uiCommand: unknown): V3GameplayCommand 
 
   if (type === 'buy-temporary-upgrade') {
     const upgrade = cmd.upgrade;
-    if (!['sunny-season', 'deep-roots'].includes(String(upgrade))) {
-      throw new Error(
-        `Unsupported temporary upgrade: ${upgrade}. Must be 'sunny-season' or 'deep-roots'.`,
-      );
+    if (!['sunny-season', 'deep-roots', 'nature-surge'].includes(String(upgrade))) {
+      throw new Error(`Unsupported temporary upgrade: ${upgrade}.`);
     }
     return {
       type: 'buy-temporary-upgrade',
-      upgrade: upgrade as 'sunny-season' | 'deep-roots',
+      upgrade: upgrade as 'sunny-season' | 'deep-roots' | 'nature-surge',
     };
   }
 
+  if (type === 'buy-fertile-soil' || type === 'buy-time-bloom') return { type };
+
   // Explicit rejection of unsupported commands
-  throw new Error(
-    `Unsupported gameplay command type: ${type}. Supported types are: heart-click, sync, buy-habitat, buy-habitat-production-upgrade, buy-temporary-upgrade.`,
-  );
+  throw new Error(`Unsupported gameplay command type: ${type}.`);
 }
 
 /**

@@ -29,11 +29,12 @@ export {
   habitatsForVerifiedState,
   isV1VerifiedState,
   isV2VerifiedState,
+  isV3VerifiedState,
   nextHabitatProductionMilestone,
   parseV3CanonicalState,
   purchasedHabitatProductionMilestones,
 } from './canonicalState';
-export type { V1HabitatId, V2HabitatId, V3VerifiedCanonicalState } from './canonicalState';
+export type { V1HabitatId, V2HabitatId, V3HabitatId, V3VerifiedCanonicalState } from './canonicalState';
 
 // Configuration
 export {

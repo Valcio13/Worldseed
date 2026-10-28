@@ -5,6 +5,7 @@
  */
 
 import { parseAbi } from 'viem';
+import { IS_HEMI_MAINNET } from '../blockchain/config';
 
 // V3 Contract ABI - functions defined in WorldseedGameV3.sol
 export const v3ContractAbi = parseAbi([
@@ -70,7 +71,9 @@ export const v3ContractEvents = parseAbi([
 ]);
 
 // V3 Contract Address - set via environment variable
-const v3Address = import.meta.env.VITE_WORLDSEED_V3_CONTRACT_ADDRESS;
+const v3Address = IS_HEMI_MAINNET
+  ? import.meta.env.VITE_WORLDSEED_V3_MAINNET_CONTRACT_ADDRESS
+  : import.meta.env.VITE_WORLDSEED_V3_CONTRACT_ADDRESS;
 
 export const v3ContractAddress =
   v3Address && /^0x[a-fA-F0-9]{40}$/.test(v3Address) ? (v3Address as `0x${string}`) : undefined;

@@ -39,7 +39,9 @@ vi.mock('../config', () => ({
 
 // Mock blockchain config to avoid createConfig import issues
 vi.mock('../../blockchain/config', () => ({
+  IS_HEMI_MAINNET: false,
   TARGET_CHAIN_ID: 1,
+  TARGET_CHAIN_NAME: 'Hemi Sepolia',
 }));
 
 describe('useV3Auth', () => {
@@ -55,6 +57,7 @@ describe('useV3Auth', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearV3AuthSession();
+    window.sessionStorage.clear();
     // Don't use fake timers to avoid hanging tests
   });
 
@@ -153,7 +156,7 @@ describe('useV3Auth', () => {
       });
     });
 
-    it('restores an unexpired session after the Live hook remounts without signing again', async () => {
+    it('restores an unexpired session after a Live/Guest hook remount without signing again', async () => {
       vi.mocked(useAccount).mockReturnValue({ address: mockWallet } as never);
       vi.mocked(useChainId).mockReturnValue(1);
       const signMessageAsync = vi.fn().mockResolvedValue(mockSignature);
@@ -180,8 +183,51 @@ describe('useV3Auth', () => {
       expect(secondMount.result.current.runId).toBe(mockRunId);
       expect(signMessageAsync).toHaveBeenCalledOnce();
       expect(localStorage.length).toBe(0);
-      expect(window.sessionStorage.length).toBe(0);
+      expect(window.sessionStorage.length).toBe(1);
       act(() => secondMount.result.current.logout());
+    });
+
+    it('restores an unexpired scoped session after a page refresh without another signature', async () => {
+      vi.mocked(useAccount).mockReturnValue({ address: mockWallet, status: 'connected' } as never);
+      vi.mocked(useChainId).mockReturnValue(1);
+      const signMessageAsync = vi.fn().mockResolvedValue(mockSignature);
+      vi.mocked(useSignMessage).mockReturnValue({ signMessageAsync } as never);
+      vi.mocked(v3Api.requestChallenge).mockResolvedValue({
+        challengeId: mockChallengeId,
+        message: mockMessage,
+        expiresAtMs: Date.now() + 300000,
+      });
+      vi.mocked(v3Api.completeChallenge).mockResolvedValue({
+        sessionToken: mockSessionToken,
+        expiresAtMs: Date.now() + 900000,
+      });
+
+      const firstPage = renderHook(() => useV3Auth());
+      await act(async () => {
+        expect(await firstPage.result.current.authenticate(mockRunId)).toBe(true);
+      });
+      firstPage.unmount();
+      expect(window.sessionStorage.length).toBe(1);
+
+      // A page reload creates a fresh hook module while tab-scoped storage remains.
+      vi.resetModules();
+      const refreshedWagmi = await import('wagmi');
+      vi.mocked(refreshedWagmi.useAccount).mockReturnValue({
+        address: mockWallet,
+        status: 'connected',
+      } as never);
+      vi.mocked(refreshedWagmi.useChainId).mockReturnValue(1);
+      vi.mocked(refreshedWagmi.useSignMessage).mockReturnValue({
+        signMessageAsync,
+      } as never);
+      const refreshedAuth = await import('./useV3Auth');
+      const secondPage = renderHook(() => refreshedAuth.useV3Auth());
+
+      expect(secondPage.result.current.isAuthenticated).toBe(true);
+      expect(secondPage.result.current.sessionToken).toBe(mockSessionToken);
+      expect(secondPage.result.current.runId).toBe(mockRunId);
+      expect(signMessageAsync).toHaveBeenCalledOnce();
+      act(() => refreshedAuth.clearV3AuthSession());
     });
 
     it('expires cached sessions while unmounted and requires explicit authentication again', async () => {
@@ -211,6 +257,7 @@ describe('useV3Auth', () => {
       expect(secondMount.result.current.isAuthenticated).toBe(false);
       expect(secondMount.result.current.sessionToken).toBeNull();
       expect(secondMount.result.current.error).toBe('Session expired');
+      expect(window.sessionStorage.length).toBe(0);
       expect(signMessageAsync).toHaveBeenCalledOnce();
       act(() => secondMount.result.current.logout());
     });
@@ -399,11 +446,45 @@ describe('useV3Auth', () => {
       expect(result.current.sessionToken).toBeNull();
       expect(result.current.isAuthenticated).toBe(false);
       expect(result.current.error).toBeNull();
+      expect(window.sessionStorage.length).toBe(0);
 
       unmount();
       const afterLogout = renderHook(() => useV3Auth());
       expect(afterLogout.result.current.isAuthenticated).toBe(false);
       expect(afterLogout.result.current.sessionToken).toBeNull();
+    });
+
+    it('does not reuse a stored session after the connected wallet changes', async () => {
+      vi.mocked(useAccount).mockReturnValue({ address: mockWallet, status: 'connected' } as never);
+      vi.mocked(useChainId).mockReturnValue(1);
+      vi.mocked(useSignMessage).mockReturnValue({
+        signMessageAsync: vi.fn().mockResolvedValue(mockSignature),
+      } as never);
+      vi.mocked(v3Api.requestChallenge).mockResolvedValue({
+        challengeId: mockChallengeId,
+        message: mockMessage,
+        expiresAtMs: Date.now() + 300000,
+      });
+      vi.mocked(v3Api.completeChallenge).mockResolvedValue({
+        sessionToken: mockSessionToken,
+        expiresAtMs: Date.now() + 900000,
+      });
+
+      const { result, rerender } = renderHook(() => useV3Auth());
+      await act(async () => {
+        expect(await result.current.authenticate(mockRunId)).toBe(true);
+      });
+      expect(window.sessionStorage.length).toBe(1);
+
+      vi.mocked(useAccount).mockReturnValue({
+        address: '0x1111111111111111111111111111111111111111',
+        status: 'connected',
+      } as never);
+      rerender();
+
+      expect(result.current.isAuthenticated).toBe(false);
+      expect(result.current.sessionToken).toBeNull();
+      expect(window.sessionStorage.length).toBe(0);
     });
   });
 

@@ -156,6 +156,13 @@ describe('confirmed V3 chain state reader', () => {
     checkpoints.close();
   });
 
+  it('accepts rules version 3 for new and recovered runs without rewriting the pinned version', async () => {
+    const { reader, checkpoints } = setup(31_337, { rulesVersion: 3 });
+    const context = await reader.getRunContext(session, '42');
+    expect(context?.rulesVersion).toBe(3);
+    checkpoints.close();
+  });
+
   it('fails closed on wrong RPC chain ID and does not expose a run', async () => {
     const { reader, checkpoints } = setup(1);
     expect(await reader.getRunContext(session, '42')).toBeNull();

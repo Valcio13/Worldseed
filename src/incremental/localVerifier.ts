@@ -176,6 +176,9 @@ function sameCommand(left: GameplayCommand, right: GameplayCommand): boolean {
         return JSON.stringify([command.type, command.habitat, command.milestone]);
       case 'buy-temporary-upgrade':
         return JSON.stringify([command.type, command.upgrade]);
+      case 'buy-fertile-soil':
+      case 'buy-time-bloom':
+        return JSON.stringify([command.type]);
       default:
         return JSON.stringify(command);
     }
@@ -195,6 +198,9 @@ function canonicalCommand(command: GameplayCommand): GameplayCommand {
       return { type: command.type, habitat: command.habitat, milestone: command.milestone };
     case 'buy-temporary-upgrade':
       return { type: command.type, upgrade: command.upgrade };
+    case 'buy-fertile-soil':
+    case 'buy-time-bloom':
+      return { type: command.type };
     default:
       return command;
   }

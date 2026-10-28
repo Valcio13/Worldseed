@@ -7,12 +7,17 @@ import {
   NATURE_SCALE,
   serializeCanonicalRun as serializeV2Run,
 } from '../incremental/rulesV2';
+import {
+  createCanonicalRun as createV3Run,
+  serializeCanonicalRun as serializeV3Run,
+} from '../incremental/rulesV3';
 import { serializeCanonicalRun as serializeV1Run } from '../incremental/rulesV1';
 import {
   createHabitatProductionUpgradeCommand,
   createHabitatPurchaseCommand,
   habitatLevelForVerifiedState,
   habitatsForVerifiedState,
+  isV3VerifiedState,
   nextHabitatProductionMilestone,
   parseV3CanonicalState,
   purchasedHabitatProductionMilestones,
@@ -82,6 +87,25 @@ describe('V3 version-aware canonical frontend state', () => {
     expect(purchasedHabitatProductionMilestones(recovered, 'water')).toEqual([10]);
     expect(nextHabitatProductionMilestone(recovered, 'water')).toBeNull();
     expect(createHabitatProductionUpgradeCommand(recovered, 'water')).toBeNull();
+  });
+
+  it('parses Rules V3 fields while preserving V1/V2-only upgrade availability', () => {
+    const state = parseV3CanonicalState(
+      serializeV3Run(
+        createV3Run({
+          ...runInput,
+          runId: 'v3-frontend-run',
+        }),
+      ),
+    );
+    expect(state.rulesVersion).toBe(3);
+    expect(habitatsForVerifiedState(state)).toEqual(HABITATS_V2);
+    expect(isV3VerifiedState(state)).toBe(true);
+    if (!isV3VerifiedState(state)) throw new Error('Expected rules V3 state.');
+    expect(state.temporaryMs['nature-surge']).toBe(0);
+    expect(state.fertileSoilLevel).toBe(0);
+    expect(state.timeBloomUsed).toBe(false);
+    expect(createHabitatProductionUpgradeCommand(state, 'water')).toBeNull();
   });
 
   it('does not build purchase commands for a settled run', () => {

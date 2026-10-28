@@ -13,6 +13,7 @@ import { useV3Run } from '../v3/hooks/useV3Run';
 import { useV3Settlement } from '../v3/hooks/useV3Settlement';
 import type { V3RewardRules, V3UpgradeKind } from '../v3/types';
 import { TARGET_CHAIN_ID } from '../blockchain/config';
+import { TARGET_NETWORK_LABEL } from '../blockchain/networkPresentation';
 import './V3IntegrationShell.css';
 
 export interface V3LivingProfile {
@@ -95,6 +96,7 @@ function VerifiedProgression({
   const { switchChainAsync, isPending: switching } = useSwitchChain();
   const walletAccount = useAccount();
   const [walletError, setWalletError] = useState<string | null>(null);
+  const [startRunOpen, setStartRunOpen] = useState(false);
   const activeVerifiedRunId =
     runState.runId > 0n && runState.run?.status === 'ACTIVE'
       ? runState.runId.toString()
@@ -127,6 +129,15 @@ function VerifiedProgression({
   const statusRunState = { ...runState, canAccessV3: Boolean(runState.canAccessV3) };
   const hasActiveRun = runState.runId > 0n && runState.run?.status === 'ACTIVE';
   const isAuthenticating = ['requesting-challenge', 'signing', 'completing'].includes(auth.status);
+
+  useEffect(() => {
+    if (!startRunOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setStartRunOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [startRunOpen]);
   const canAuthenticate = Boolean(auth.canAuthenticate && authenticationRunId !== undefined);
   const walletReconnecting = walletAccount.status === 'reconnecting';
   const walletBusy = connecting || switching || walletReconnecting;
@@ -309,7 +320,7 @@ function VerifiedProgression({
     : !runState.wallet
       ? 'Connect wallet'
     : !runState.isCorrectChain
-      ? 'Switch to Hemi Sepolia'
+      ? `Switch to ${TARGET_NETWORK_LABEL}`
       : `Disconnect ${runState.wallet.slice(0, 6)}…${runState.wallet.slice(-4)}`;
 
   return (
@@ -320,7 +331,7 @@ function VerifiedProgression({
           <span>{auth.isAuthenticated ? ' · ready' : ''}</span>
         </summary>
         <div className="v3-living-account-panel">
-          <p className="v3-living-account-mode">Live · Hemi Sepolia</p>
+          <p className="v3-living-account-mode">Live · {TARGET_NETWORK_LABEL}</p>
           <p>Guest progress is simulated. Live rewards require an authenticated verifier-backed run.</p>
           {walletReconnecting && (
             <p role="status" aria-live="polite">Restoring the wallet connection saved by your browser…</p>
@@ -357,14 +368,13 @@ function VerifiedProgression({
                 </button>
               )}
               {!hasActiveRun && auth.isAuthenticated && (
-                <details className="v3-start-run-menu">
-                  <summary>Start a Live run</summary>
-                  <V3RunControls
-                    runState={statusRunState}
-                    transactionState={transactionState}
-                    onStartRun={startVerifiedRun}
-                  />
-                </details>
+                <button
+                  type="button"
+                  className="v3-start-run-trigger"
+                  onClick={() => setStartRunOpen(true)}
+                >
+                  Start a Live run
+                </button>
               )}
             </>
           )}
@@ -383,6 +393,47 @@ function VerifiedProgression({
           )}
         </div>
       </details>
+
+      {startRunOpen && !hasActiveRun && auth.isAuthenticated && (
+        <div
+          className="v3-start-run-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setStartRunOpen(false);
+            }
+          }}
+        >
+          <section
+            className="v3-start-run-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="v3-start-run-dialog-title"
+          >
+            <header>
+              <div>
+                <span>LIVE MODE</span>
+                <h2 id="v3-start-run-dialog-title">Prepare your run</h2>
+              </div>
+              <button
+                type="button"
+                className="v3-start-run-close"
+                aria-label="Close Start Run dialog"
+                autoFocus
+                onClick={() => {
+                  setStartRunOpen(false);
+                }}
+              >
+                ×
+              </button>
+            </header>
+            <V3RunControls
+              runState={statusRunState}
+              transactionState={transactionState}
+              onStartRun={startVerifiedRun}
+            />
+          </section>
+        </div>
+      )}
 
       <details className="v3-advanced-activity">
         <summary>Advanced / Activity</summary>

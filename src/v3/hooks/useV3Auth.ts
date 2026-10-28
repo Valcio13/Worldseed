@@ -50,9 +50,50 @@ interface InMemoryV3Session {
   expiresAtMs: number;
 }
 
-// Keep a verifier session only in this page's memory so unmounting Live while
-// the player visits Guest does not discard a still-valid session. A refresh
-// clears this module state and therefore still requires explicit auth again.
+const SESSION_STORAGE_KEY = 'worldseed:v3:wallet-session:v1';
+
+function readStoredSession(): InMemoryV3Session | null {
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== 'object') throw new Error('Invalid session');
+    const session = value as Partial<InMemoryV3Session>;
+    if (
+      typeof session.wallet !== 'string' || !/^0x[\da-f]{40}$/i.test(session.wallet) ||
+      !Number.isSafeInteger(session.chainId) || typeof session.verifyingContract !== 'string' ||
+      !/^0x[\da-f]{40}$/i.test(session.verifyingContract) ||
+      typeof session.runId !== 'string' || !/^\d+$/.test(session.runId) ||
+      typeof session.sessionToken !== 'string' || !session.sessionToken ||
+      typeof session.expiresAtMs !== 'number' || !Number.isFinite(session.expiresAtMs)
+    ) throw new Error('Invalid session');
+    if (session.expiresAtMs <= Date.now()) {
+      window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      return null;
+    }
+    return session as InMemoryV3Session;
+  } catch {
+    try {
+      window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    } catch {
+      // Storage can be unavailable in restricted browser contexts.
+    }
+    return null;
+  }
+}
+
+function persistSession(session: InMemoryV3Session | null): void {
+  try {
+    if (session?.sessionToken)
+      window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    else window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    // The current page can still use its in-memory session if storage is blocked.
+  }
+}
+
+// Tab-scoped storage survives refresh and Live/Guest remounts without retaining
+// the short-lived verifier token across browser sessions.
 let inMemorySession: InMemoryV3Session | null = null;
 let inMemoryExpiryTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 
@@ -60,6 +101,7 @@ function clearInMemorySession(): void {
   if (inMemoryExpiryTimer) globalThis.clearTimeout(inMemoryExpiryTimer);
   inMemoryExpiryTimer = null;
   inMemorySession = null;
+  persistSession(null);
 }
 
 function cacheInMemorySession(session: InMemoryV3Session): void {
@@ -67,17 +109,25 @@ function cacheInMemorySession(session: InMemoryV3Session): void {
   inMemoryExpiryTimer = null;
   if (session.expiresAtMs <= Date.now()) {
     inMemorySession = { ...session, sessionToken: null };
+    persistSession(null);
     return;
   }
   inMemorySession = session;
+  persistSession(session);
   inMemoryExpiryTimer = globalThis.setTimeout(() => {
-    if (inMemorySession?.sessionToken === session.sessionToken)
+    if (inMemorySession?.sessionToken === session.sessionToken) {
       inMemorySession = { ...session, sessionToken: null };
+      persistSession(null);
+    }
     inMemoryExpiryTimer = null;
   }, session.expiresAtMs - Date.now());
 }
 
 function readInMemorySession(wallet?: string, chainId?: number): InMemoryV3Session | null {
+  if (!inMemorySession) {
+    const stored = readStoredSession();
+    if (stored) cacheInMemorySession(stored);
+  }
   if (!inMemorySession || !wallet || wallet.toLowerCase() !== inMemorySession.wallet ||
       chainId !== inMemorySession.chainId || v3ContractAddress?.toLowerCase() !== inMemorySession.verifyingContract)
     return null;
@@ -85,6 +135,7 @@ function readInMemorySession(wallet?: string, chainId?: number): InMemoryV3Sessi
     if (inMemoryExpiryTimer) globalThis.clearTimeout(inMemoryExpiryTimer);
     inMemoryExpiryTimer = null;
     inMemorySession = { ...inMemorySession, sessionToken: null };
+    persistSession(null);
   }
   return inMemorySession;
 }
@@ -155,8 +206,10 @@ export function useV3Auth() {
           runId: null,
           error: 'Session expired',
         }));
-        if (inMemorySession?.expiresAtMs === expiresAtMs)
+        if (inMemorySession?.expiresAtMs === expiresAtMs) {
           inMemorySession = { ...inMemorySession, sessionToken: null };
+          persistSession(null);
+        }
       }, timeUntilExpiry);
     }
   }, []);
@@ -166,6 +219,11 @@ export function useV3Auth() {
     const walletChanged = account.address !== prevAccountRef.current;
     const chainChanged = chainId !== TARGET_CHAIN_ID;
     const cached = readInMemorySession(account.address, chainId);
+
+    // During page refresh/provider reconnect the wallet can be temporarily
+    // absent. Keep its scoped session until Wagmi resolves the account.
+    if (!account.address && (account.status === 'connecting' || account.status === 'reconnecting'))
+      return;
 
     if (walletChanged || chainChanged) {
       if (cached && !chainChanged) {
@@ -189,7 +247,13 @@ export function useV3Auth() {
       return;
     }
 
-    if (cached?.sessionToken) scheduleSessionExpiration(cached.expiresAtMs);
+    if (cached?.sessionToken) {
+      scheduleSessionExpiration(cached.expiresAtMs);
+      if (!state.isAuthenticated || state.sessionToken !== cached.sessionToken) {
+        setState(authStateFromSession(cached, isConfigured, isCorrectChain));
+        return;
+      }
+    }
 
     // Update configuration state
     setState((prev) => ({
@@ -198,7 +262,7 @@ export function useV3Auth() {
       isConfigured,
       isCorrectChain,
     }));
-  }, [account.address, chainId, isConfigured, isCorrectChain, scheduleSessionExpiration, state.isAuthenticated]);
+  }, [account.address, account.status, chainId, isConfigured, isCorrectChain, scheduleSessionExpiration, state.isAuthenticated, state.sessionToken]);
 
   // Clean up timer on unmount
   useEffect(() => {

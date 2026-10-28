@@ -149,6 +149,7 @@ describe('Living Island screen', () => {
       earnedNature: '600',
       productionPerSecond: '12',
       visualHabitatLevelCount: 5,
+      verifiedNatureBoosts: null,
       pendingHeartClicks: 0,
       scoreTier: 35,
       rulesVersion: 1,
@@ -197,6 +198,7 @@ describe('Living Island screen', () => {
       earnedNature: '600',
       productionPerSecond: '12',
       visualHabitatLevelCount: 5,
+      verifiedNatureBoosts: null,
       pendingHeartClicks: 0,
       scoreTier: 35,
       rulesVersion: 1,
@@ -273,7 +275,7 @@ describe('Living Island screen', () => {
         verifiedModeEnabled
         verifiedIsland={{
           nature: '1', estimatedNature: '1', earnedNature: '1', productionPerSecond: '0',
-          visualHabitatLevelCount: 0, pendingHeartClicks: 0, scoreTier: 0, rulesVersion: 1, habitats: [],
+          visualHabitatLevelCount: 0, verifiedNatureBoosts: null, pendingHeartClicks: 0, scoreTier: 0, rulesVersion: 1, habitats: [],
         }}
         verifiedHeartAction={heart}
         verifiedActions={{
@@ -282,6 +284,10 @@ describe('Living Island screen', () => {
           pendingHeartClicks: 2,
           buyHabitat: vi.fn(),
           buyProductionUpgrade: vi.fn(),
+          buyNatureSurge: vi.fn(),
+          buyFertileSoil: vi.fn(),
+          buyTimeBloom: vi.fn(),
+          sendGameplayCommand: vi.fn(),
           flushPendingCommands: vi.fn(async () => undefined),
         }}
         nextSeasonStart={Date.UTC(2026, 10, 2)}
@@ -314,6 +320,7 @@ describe('Living Island screen', () => {
           earnedNature: '600',
           productionPerSecond: '12',
           visualHabitatLevelCount: 1,
+          verifiedNatureBoosts: null,
           pendingHeartClicks: 0,
           scoreTier: 1,
           rulesVersion: 1,
@@ -328,6 +335,10 @@ describe('Living Island screen', () => {
           pendingHeartClicks: 0,
           buyHabitat,
           buyProductionUpgrade: vi.fn(),
+          buyNatureSurge: vi.fn(),
+          buyFertileSoil: vi.fn(),
+          buyTimeBloom: vi.fn(),
+          sendGameplayCommand: vi.fn(),
           flushPendingCommands: vi.fn(async () => undefined),
         }}
         nextSeasonStart={Date.UTC(2026, 10, 2)}
@@ -342,6 +353,66 @@ describe('Living Island screen', () => {
     expect(buyHabitat).toHaveBeenCalledWith('water', 1);
     expect(onStateChange).not.toHaveBeenCalled();
     expect(screen.getByTestId('verified-nature-counter')).toHaveTextContent('456');
+  });
+
+  it('mounts Rules V3 Live upgrades and routes all three commands through verified actions', () => {
+    const sendGameplayCommand = vi.fn();
+    render(
+      <LivingIslandScreen
+        state={createEconomyState(1)}
+        mode="verified"
+        verifiedIsland={{
+          nature: '8,000',
+          estimatedNature: '8,000',
+          earnedNature: '8,000',
+          productionPerSecond: '12',
+          visualHabitatLevelCount: 5,
+          scoreTier: 5,
+          rulesVersion: 3,
+          pendingHeartClicks: 0,
+          verifiedNatureBoosts: {
+            natureSurgeCost: '1,500',
+            natureSurgeRemainingMs: 0,
+            canBuyNatureSurge: true,
+            fertileSoilLevel: 1,
+            fertileSoilMaxLevel: 5,
+            fertileSoilNextCost: '2,000',
+            canBuyFertileSoil: true,
+            timeBloomUsed: false,
+            timeBloomCost: '240',
+            canBuyTimeBloom: true,
+          },
+          habitats: [],
+        }}
+        verifiedActions={{
+          pending: false,
+          heartClickPending: false,
+          pendingHeartClicks: 0,
+          buyHabitat: vi.fn(),
+          buyProductionUpgrade: vi.fn(),
+          buyNatureSurge: vi.fn(),
+          buyFertileSoil: vi.fn(),
+          buyTimeBloom: vi.fn(),
+          sendGameplayCommand,
+          flushPendingCommands: vi.fn(async () => undefined),
+        }}
+        nextSeasonStart={Date.UTC(2026, 10, 2)}
+        saveLabel="Saved"
+        onHeartClick={vi.fn()}
+        onStateChange={vi.fn()}
+        onRebirth={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('region', { name: 'Live Nature upgrades' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Nature Surge/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Fertile Soil level 2/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Buy Time Bloom/ }));
+    expect(sendGameplayCommand.mock.calls).toEqual([
+      [{ type: 'buy-temporary-upgrade', upgrade: 'nature-surge' }],
+      [{ type: 'buy-fertile-soil' }],
+      [{ type: 'buy-time-bloom' }],
+    ]);
   });
 
   it('wanders creatures through short walks, uses walking state, and returns to idle', () => {

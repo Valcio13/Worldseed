@@ -23,7 +23,8 @@ import { TARGET_CHAIN_ID, TARGET_CHAIN_NAME } from '../blockchain/config';
 import { transactionFailureMessage } from '../blockchain/transactions';
 import { isV3IdleIntegrationEnabled } from '../integration/featureFlags';
 import { clearV3AuthSession } from '../v3/hooks/useV3Auth';
-import { LivingIslandScreen, type LivingIslandMode } from './LivingIslandScreen';
+import { LivingIslandScreen } from './LivingIslandScreen';
+import { initialLivingIslandMode, type LivingIslandMode } from './livingIslandMode';
 import { AudioSettings } from './AudioSettings';
 import {
   V3IslandProgression,
@@ -36,17 +37,6 @@ import './LivingIsland.css';
 import { islandGrowthStage } from './islandGrowthStage';
 
 const MODE_PREFERENCE_KEY = 'worldseed:play-mode:v1';
-
-export function initialLivingIslandMode(
-  savedPreference: string | null,
-  isProduction: boolean,
-  liveEnabled: boolean,
-): LivingIslandMode {
-  if (savedPreference === 'guest') return 'guest';
-  if ((savedPreference === 'live' || savedPreference === 'verified') && liveEnabled)
-    return 'verified';
-  return isProduction && liveEnabled ? 'verified' : 'guest';
-}
 
 function readModePreference(): string | null {
   try {
@@ -84,7 +74,9 @@ export function LivingIslandGame() {
   const [verifiedHeartAction, setVerifiedHeartAction] = useState<(() => boolean) | null>(null);
   const [verifiedActions, setVerifiedActions] = useState<V3IslandActionHandlers | null>(null);
   const [verifiedProfile, setVerifiedProfile] = useState<V3LivingProfile | null>(null);
-  const [verifiedSettlement, setVerifiedSettlement] = useState<V3LivingSettlementControls | null>(null);
+  const [verifiedSettlement, setVerifiedSettlement] = useState<V3LivingSettlementControls | null>(
+    null,
+  );
   const restorationRef = useRef(createGameState('guest-living-island'));
   const legacyRestorationRef = useRef<ReturnType<typeof createGameState> | undefined>(undefined);
   const lastCheckpointRef = useRef<number | null>(null);
@@ -308,16 +300,21 @@ export function LivingIslandGame() {
         previous?.pendingHeartClicks === next?.pendingHeartClicks &&
         previous?.buyHabitat === next?.buyHabitat &&
         previous?.buyProductionUpgrade === next?.buyProductionUpgrade &&
+        previous?.buyNatureSurge === next?.buyNatureSurge &&
+        previous?.buyFertileSoil === next?.buyFertileSoil &&
+        previous?.buyTimeBloom === next?.buyTimeBloom &&
+        previous?.sendGameplayCommand === next?.sendGameplayCommand &&
         previous?.flushPendingCommands === next?.flushPendingCommands
-      ) return previous;
+      )
+        return previous;
       return next;
     });
   }, []);
 
   const acceptVerifiedProfile = useCallback((next: V3LivingProfile | null) => {
-    setVerifiedProfile((previous) =>
-      JSON.stringify(previous) === JSON.stringify(next) ? previous : next,
-    );
+    // Reward rules include bigint values, which JSON.stringify cannot serialize.
+    // V3IntegrationShell memoizes the profile, so identity is enough to skip no-op updates.
+    setVerifiedProfile((previous) => (previous === next ? previous : next));
   }, []);
 
   const acceptVerifiedSettlement = useCallback((next: V3LivingSettlementControls | null) => {

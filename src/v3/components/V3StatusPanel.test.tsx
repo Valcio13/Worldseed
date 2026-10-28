@@ -2,6 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { V3StatusPanel } from './V3StatusPanel';
 import type { V3RunState } from '../types';
+import { TARGET_NETWORK_LABEL } from '../../blockchain/networkPresentation';
 
 const runState: V3RunState = {
   wallet: '0x0000000000000000000000000000000000000001',
@@ -44,5 +45,15 @@ describe('V3StatusPanel', () => {
     render(<V3StatusPanel runState={runState} />);
 
     expect(screen.getByText('Tier 42 · CP award may be capped')).toBeTruthy();
+  });
+
+  it('shows the selected network when the wallet is connected to the wrong chain', () => {
+    render(
+      <V3StatusPanel
+        runState={{ ...runState, isCorrectChain: false, canAccessV3: false }}
+      />,
+    );
+
+    expect(screen.getByText(`Switch to ${TARGET_NETWORK_LABEL}`)).toBeInTheDocument();
   });
 });

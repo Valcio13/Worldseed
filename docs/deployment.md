@@ -10,7 +10,23 @@
 | Explorer | <https://testnet.explorer.hemi.xyz/address/0x133B0fDbaC7D6535C68Be5945d15C328F3d371E4> |
 | Sourcify | <https://repo.sourcify.dev/743111/0x133B0fDbaC7D6535C68Be5945d15C328F3d371E4>          |
 
-The source was submitted through Sourcify's documented API and returned exact creation and runtime matches. No contract deployment is required for staging. Do not use Hemi Mainnet for this milestone.
+The source was submitted through Sourcify's documented API and returned exact creation and runtime matches. This is the existing Sepolia legacy contract; the Mainnet V3 deployment is recorded separately below.
+
+## Hemi Mainnet V3 deployment
+
+| Setting | Value |
+| --- | --- |
+| Network | Hemi Mainnet |
+| Chain ID | `43111` |
+| Contract | `0x133B0fDbaC7D6535C68Be5945d15C328F3d371E4` |
+| Deployment transaction | `0x11ed5d33084b90c6089a1d7f3124aa30bdb2765c56d4c06574e66878cfc3cc79` |
+| Block | `5612849` |
+| Receipt | Success; `3,492,836` gas |
+| Owner | `0x8cc769177F7991dcB3C36AF1F7D64F1E9259b418` |
+| Attester | `0x74f908FE3b0c85cD5c06cc3ed95B033982674E8F` |
+| Active rules | Version `3`; tuple `(42,10,1000,1,100000,100000,100,7)` |
+
+The deployment receipt and onchain roles/rules were verified by read-only RPC calls. This does not indicate that the Mainnet verifier or frontend has been deployed.
 
 ## Local development and production preview
 
@@ -60,7 +76,7 @@ npm run contract:test
 npm run contract:deploy:testnet
 ```
 
-Never put private keys in `VITE_*` variables, source files, shell transcripts, frontend hosting settings, or version control. Do not paste a key or seed phrase into chat. Mainnet variables are reserved and unused; this repository does not authorize a Mainnet deployment.
+Never put private keys in `VITE_*` variables, source files, shell transcripts, frontend hosting settings, or version control. Do not paste a key or seed phrase into chat. The separate Mainnet verifier template is `wrangler.v3-verifier.mainnet.example.toml`. Keep its D1 database, RPC secret, attester key, and frontend origin isolated from Sepolia. A Mainnet Worker deployment or remote migration still requires explicit authorization.
 
 ## Clean-wallet manual QA
 

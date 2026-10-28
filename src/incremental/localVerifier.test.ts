@@ -30,6 +30,7 @@ class TestClock implements VerifierClock {
 class TestAuthority implements RunAuthorityReader {
   currentSeasonId = 0;
   active = true;
+  rulesVersion?: number;
   readonly input = {
     runId: '42',
     seasonId: 0,
@@ -46,6 +47,7 @@ class TestAuthority implements RunAuthorityReader {
       verifyingContract: session.verifyingContract,
       active: this.active,
       currentSeasonId: this.currentSeasonId,
+      rulesVersion: this.rulesVersion,
       input: this.input,
     };
   }
@@ -152,6 +154,30 @@ describe('local command verifier', () => {
     const next = await restarted.submit(request('cmd-2', 1, { type: 'sync' }));
     expect(next.serverTimeMs).toBe(MONDAY_EPOCH_MS + 4_000);
     expect(next.state.earnedNatureAtoms).toBe(1_000_000_000_000n);
+  });
+
+  it('replays a V3 Nature Surge purchase idempotently and keeps the run pinned to rules 3', async () => {
+    const persistence = new MemoryVerifierPersistence();
+    const { clock, authority } = setup(persistence);
+    authority.rulesVersion = 3;
+    const verifier = new LocalVerifier(auth, authority, persistence, clock);
+    for (let sequence = 0; sequence < 15; sequence++)
+      await verifier.submit(request(`fund-v3-${sequence}`, sequence, { type: 'heart-click', quantity: 100 }));
+
+    const surgeRequest = request('v3-surge', 15, {
+      type: 'buy-temporary-upgrade', upgrade: 'nature-surge',
+    });
+    const bought = await verifier.submit(surgeRequest);
+    expect(bought.cursor.rulesVersion).toBe(3);
+    expect(bought.spentAtoms).toBe(1_500_000_000_000_000n);
+    expect((bought.state as import('./rulesV3').CanonicalRunState).temporaryMs['nature-surge']).toBe(30_000);
+
+    const restarted = new LocalVerifier(auth, authority, persistence, clock);
+    await expect(restarted.submit(surgeRequest)).resolves.toEqual(bought);
+    const recovered = await restarted.recover('valid', '42');
+    expect(recovered.cursor.rulesVersion).toBe(3);
+    expect(recovered.state.sequence).toBe(16);
+    expect((recovered.state as import('./rulesV3').CanonicalRunState).natureAtoms).toBe(0n);
   });
 
   it('replays V2 habitat-upgrade commands idempotently after persistence recovery', async () => {

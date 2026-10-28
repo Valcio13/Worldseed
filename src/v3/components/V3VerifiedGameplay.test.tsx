@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createCanonicalRun,
@@ -9,10 +9,12 @@ import {
   type CanonicalRunState,
 } from '../../incremental/rulesV1';
 import * as rulesV2 from '../../incremental/rulesV2';
+import * as rulesV3 from '../../incremental/rulesV3';
 import { serializeCanonicalRun as serializeVersionedCanonicalRun } from '../../incremental/versionedRules';
 import type { V3CommandQueueState } from '../types';
 import { V3VerifiedGameplay } from './V3VerifiedGameplay';
 import { parseV3CanonicalState } from '../canonicalState';
+import { V3ApiError } from '../api';
 
 const { useV3CommandsMock } = vi.hoisted(() => ({ useV3CommandsMock: vi.fn() }));
 vi.mock('../hooks/useV3Commands', () => ({ useV3Commands: useV3CommandsMock }));
@@ -61,6 +63,26 @@ function canonicalStateV2(): rulesV2.CanonicalRunState {
     natureAtoms: 100_000n * rulesV2.NATURE_SCALE,
     earnedNatureAtoms: 100_000n * rulesV2.NATURE_SCALE,
     habitats: { ...base.habitats, water: 10 },
+  };
+}
+
+function canonicalStateV3(): rulesV3.CanonicalRunState {
+  const base = rulesV3.createCanonicalRun({
+    runId,
+    seasonId: rulesV3.seasonIdAtMilliseconds(startedAtMs),
+    startedAtMs,
+    seasonalPP: 0n,
+    existingUpgrades: { growth: 0, efficiency: 0, awakening: 0, rebirth: 0 },
+    seasonRebirths: 0,
+    upgradeChoices: [],
+  });
+  return {
+    ...base,
+    natureAtoms: 5_000n * rulesV3.NATURE_SCALE,
+    earnedNatureAtoms: 5_000n * rulesV3.NATURE_SCALE,
+    habitats: { ...base.habitats, water: 1 },
+    fertileSoilLevel: 2,
+    temporaryMs: { ...base.temporaryMs, 'nature-surge': 12_345 },
   };
 }
 
@@ -117,6 +139,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -126,6 +149,42 @@ describe('verified Living Island adapter', () => {
     const parsed = parseV3CanonicalState(serializeVersionedCanonicalRun(state), { runId, sequence: 0 });
     expect(parsed.rulesVersion).toBe(2);
     expect(parsed.runId).toBe(runId);
+  });
+
+  it('publishes V3 upgrade fields and action handlers from canonical state', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(startedAtMs + 1_000);
+    const state = canonicalStateV3();
+    recoverStateMock.mockResolvedValueOnce({
+      cursor: { runId, sequence: 0, rulesVersion: 3 },
+      canonicalState: serializeVersionedCanonicalRun(state),
+      scoreTier: 0,
+      wallet,
+    });
+    renderVerified();
+    await waitFor(() => expect(snapshotChangeMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        rulesVersion: 3,
+        verifiedNatureBoosts: expect.objectContaining({
+          natureSurgeCost: '1.5K',
+          natureSurgeRemainingMs: 11_345,
+          canBuyNatureSurge: true,
+          fertileSoilLevel: 2,
+          fertileSoilMaxLevel: 5,
+          fertileSoilNextCost: '3K',
+          canBuyFertileSoil: true,
+          timeBloomUsed: false,
+          timeBloomCost: expect.any(String),
+          canBuyTimeBloom: true,
+        }),
+      }),
+    ));
+    const handlers = actionHandlersReadyMock.mock.calls.at(-1)?.[0];
+    expect(handlers).toEqual(expect.objectContaining({
+      buyNatureSurge: expect.any(Function),
+      buyFertileSoil: expect.any(Function),
+      buyTimeBloom: expect.any(Function),
+      sendGameplayCommand: expect.any(Function),
+    }));
   });
 
   it('loads verifier state and routes Heart clicks as verified commands', async () => {
@@ -140,6 +199,7 @@ describe('verified Living Island adapter', () => {
         scoreTier: 0,
         rulesVersion: 1,
         pendingHeartClicks: 0,
+        verifiedNatureBoosts: null,
         habitats: expect.arrayContaining([
           expect.objectContaining({ id: 'water', level: 0, nextCost: '10' }),
           expect.objectContaining({ id: 'grass', level: 0 }),
@@ -154,6 +214,36 @@ describe('verified Living Island adapter', () => {
     expect(heartAction).toBeTypeOf('function');
     heartAction?.();
     await waitFor(() => expect(enqueueHeartClickMock).toHaveBeenCalledOnce());
+  });
+
+  it('retries a newly started run while the verifier waits for chain confirmation', async () => {
+    vi.useFakeTimers();
+    recoverStateMock
+      .mockRejectedValueOnce(new V3ApiError(
+        'No run exists for this authenticated wallet.',
+        'RUN_NOT_FOUND',
+        404,
+      ))
+      .mockResolvedValueOnce({
+        cursor: { runId, sequence: 0, rulesVersion: 1 },
+        canonicalState: serializeCanonicalRun(canonicalState()),
+        scoreTier: 0,
+        wallet,
+      });
+    renderVerified();
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(recoverStateMock).toHaveBeenCalledOnce();
+    expect(screen.queryByText('No run exists for this authenticated wallet.')).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+    });
+    expect(recoverStateMock).toHaveBeenCalledTimes(2);
+    expect(snapshotChangeMock).toHaveBeenCalled();
   });
 
   it('projects confirmed passive production for display without changing the confirmed Nature balance', async () => {

@@ -1,10 +1,14 @@
 import * as rulesV1 from './rulesV1';
 import * as rulesV2 from './rulesV2';
+import * as rulesV3 from './rulesV3';
 
-export type CanonicalRunState = rulesV1.CanonicalRunState | rulesV2.CanonicalRunState;
-export type CanonicalRunInput = rulesV1.CanonicalRunInput | rulesV2.CanonicalRunInput;
-export type GameplayCommand = rulesV1.GameplayCommand | rulesV2.GameplayCommand;
-export type RulesResult = rulesV1.RulesResult | rulesV2.RulesResult;
+export type CanonicalRunState =
+  rulesV1.CanonicalRunState | rulesV2.CanonicalRunState | rulesV3.CanonicalRunState;
+export type CanonicalRunInput =
+  rulesV1.CanonicalRunInput | rulesV2.CanonicalRunInput | rulesV3.CanonicalRunInput;
+export type GameplayCommand =
+  rulesV1.GameplayCommand | rulesV2.GameplayCommand | rulesV3.GameplayCommand;
+export type RulesResult = rulesV1.RulesResult | rulesV2.RulesResult | rulesV3.RulesResult;
 
 export function createCanonicalRun(
   rulesVersion: number,
@@ -14,6 +18,8 @@ export function createCanonicalRun(
     return rulesV1.createCanonicalRun(input as rulesV1.CanonicalRunInput);
   if (rulesVersion === rulesV2.RULES_VERSION)
     return rulesV2.createCanonicalRun(input as rulesV2.CanonicalRunInput);
+  if (rulesVersion === rulesV3.RULES_VERSION)
+    return rulesV3.createCanonicalRun(input as rulesV3.CanonicalRunInput);
   throw new Error(`Unsupported canonical rules version: ${rulesVersion}.`);
 }
 
@@ -26,10 +32,13 @@ export function applyCanonicalCommand(
     return rulesV1.applyCanonicalCommand(state, command as rulesV1.GameplayCommand, serverTimeMs);
   if (state.rulesVersion === rulesV2.RULES_VERSION)
     return rulesV2.applyCanonicalCommand(state, command as rulesV2.GameplayCommand, serverTimeMs);
+  if (state.rulesVersion === rulesV3.RULES_VERSION)
+    return rulesV3.applyCanonicalCommand(state, command as rulesV3.GameplayCommand, serverTimeMs);
   throw new Error('Unsupported canonical rules version.');
 }
 
 export function serializeCanonicalRun(state: CanonicalRunState): string {
+  if (state.rulesVersion === rulesV3.RULES_VERSION) return rulesV3.serializeCanonicalRun(state);
   return state.rulesVersion === rulesV2.RULES_VERSION
     ? rulesV2.serializeCanonicalRun(state)
     : rulesV1.serializeCanonicalRun(state);
@@ -42,6 +51,7 @@ export function deserializeCanonicalRun(serialized: string): CanonicalRunState {
   const version = (value as { rulesVersion: unknown }).rulesVersion;
   if (version === rulesV1.RULES_VERSION) return rulesV1.deserializeCanonicalRun(serialized);
   if (version === rulesV2.RULES_VERSION) return rulesV2.deserializeCanonicalRun(serialized);
+  if (version === rulesV3.RULES_VERSION) return rulesV3.deserializeCanonicalRun(serialized);
   throw new Error(`Unsupported canonical rules version: ${String(version)}.`);
 }
 

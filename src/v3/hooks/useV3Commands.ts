@@ -16,8 +16,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { V3Command, V3CommandQueueState, V3CursorState, V3GameplayCommand } from '../types';
-import { v3Api } from '../api';
-import type { V3ApiError } from '../api';
+import { V3ApiError, v3Api } from '../api';
 
 const HEART_BATCH_DELAY_MS = 1_500;
 const MAX_HEART_BATCH = 100;
@@ -80,6 +79,8 @@ function isPersistedQueue(value: unknown, runId: string): value is V3CommandQueu
           'buy-habitat',
           'buy-habitat-production-upgrade',
           'buy-temporary-upgrade',
+          'buy-fertile-soil',
+          'buy-time-bloom',
         ].includes(command.payload.type),
     )
   );
@@ -320,12 +321,14 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       return recovery;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Recovery failed';
+      const runMayBeAwaitingConfirmation =
+        error instanceof V3ApiError && error.code === 'RUN_NOT_FOUND';
       commitState((prev) =>
         prev
           ? {
               ...prev,
               recoveringCursor: false,
-              recoveryError: message,
+              recoveryError: runMayBeAwaitingConfirmation ? undefined : message,
             }
           : null,
       );

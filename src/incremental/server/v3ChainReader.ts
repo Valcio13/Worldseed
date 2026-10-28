@@ -234,7 +234,7 @@ export class V3ChainStateReader implements RunAuthorityReader {
       ]);
     const seasonNumber = asSafeNumber(seasonId, 'Current season ID');
     const rulesNumber = asSafeNumber(rulesVersion, 'Active rules version');
-    if (rulesNumber !== 1 && rulesNumber !== 2)
+    if (rulesNumber !== 1 && rulesNumber !== 2 && rulesNumber !== 3)
       throw new Error('No deterministic verifier rules are installed for this rules version.');
     if (nextRunId >= (1n << 64n) - 1n) throw new Error('Contract run ID space is exhausted.');
     if (
@@ -460,7 +460,7 @@ export class V3ChainStateReader implements RunAuthorityReader {
         activeRunRaw !== runId ||
         statusRaw !== this.config.activeRunStatus ||
         seasonId !== currentSeasonId ||
-        (rulesVersion !== 1 && rulesVersion !== 2)
+        (rulesVersion !== 1 && rulesVersion !== 2 && rulesVersion !== 3)
       )
         return null;
       const confirmedHead = await this.client.getBlock({ blockNumber });

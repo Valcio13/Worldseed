@@ -22,6 +22,7 @@ import {
 } from '../incremental/engine';
 import { compareValues, formatValue } from '../incremental/decimal';
 import { NatureBoostsPanel } from './NatureBoostsPanel';
+import { VerifiedNatureBoostsPanel } from './VerifiedNatureBoostsPanel';
 import {
   islandGrowthStage,
   islandGrowthStageForHabitatCount,
@@ -489,6 +490,12 @@ function VerifiedIslandPanel({
           <span>Lifetime Nature <strong>{profile?.ready ? formatVerifiedAtoms(profile.lifetimeNature) : '—'}</strong></span>
           <span>Accumulated Rebirth score <strong>{profile?.ready ? formatVerifiedCount(profile.accumulatedScore) : '—'}</strong></span>
         </div>
+        <VerifiedNatureBoostsPanel
+          rulesVersion={island?.rulesVersion ?? 0}
+          upgrades={island?.verifiedNatureBoosts ?? null}
+          pending={!actions || actions.pending}
+          onCommand={actions?.sendGameplayCommand ?? (() => undefined)}
+        />
         <div className="living-upgrade-list">
           {upgradeKinds.map((kind) => (
             <div className="living-upgrade living-upgrade--read-only" key={kind}>
@@ -1118,11 +1125,11 @@ export function LivingIslandScreen({
           </aside>
         </div>
 
-        <footer className="living-footer">
-          {mode === 'guest'
-            ? `Guest progress is saved in this browser · simulated points are not wallet rewards · reset in ${timeUntil(nextSeasonStart)}`
-            : 'Live rewards are verifier-backed; Guest Nature and points are simulated. Progress stays separate.'}
-        </footer>
+        {mode === 'guest' && (
+          <footer className="living-footer">
+            {`Guest progress is saved in this browser · simulated points are not wallet rewards · reset in ${timeUntil(nextSeasonStart)}`}
+          </footer>
+        )}
       </main>
       {noticePresentation && (
         <div

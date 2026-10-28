@@ -1,12 +1,14 @@
 /** Version-aware frontend helpers for authoritative verifier state. */
 import * as rulesV1 from '../incremental/rulesV1';
 import * as rulesV2 from '../incremental/rulesV2';
+import * as rulesV3 from '../incremental/rulesV3';
 import { deserializeCanonicalRun, type CanonicalRunState } from '../incremental/versionedRules';
 import type { V3GameplayCommand, V3HabitatKind } from './types';
 
 export type V3VerifiedCanonicalState = CanonicalRunState;
 export type V1HabitatId = rulesV1.Habitat;
 export type V2HabitatId = rulesV2.Habitat;
+export type V3HabitatId = rulesV3.Habitat;
 
 export function parseV3CanonicalState(
   serialized: string,
@@ -32,11 +34,17 @@ export function isV2VerifiedState(
   return state.rulesVersion === rulesV2.RULES_VERSION;
 }
 
+export function isV3VerifiedState(
+  state: V3VerifiedCanonicalState,
+): state is rulesV3.CanonicalRunState {
+  return state.rulesVersion === rulesV3.RULES_VERSION;
+}
+
 /** Returns only habitats that exist in this run's pinned rules version. */
 export function habitatsForVerifiedState(
   state: V3VerifiedCanonicalState,
 ): readonly V3HabitatKind[] {
-  return isV2VerifiedState(state) ? rulesV2.HABITATS : rulesV1.HABITATS;
+  return isV1VerifiedState(state) ? rulesV1.HABITATS : rulesV2.HABITATS;
 }
 
 /** Newer habitat IDs are absent from V1 state rather than silently materialized at level zero. */
@@ -79,7 +87,9 @@ export function habitatPurchaseCostForVerifiedState(
     if (!(rulesV1.HABITATS as readonly string[]).includes(habitat)) return null;
     return rulesV1.habitatPurchaseCost(state, habitat as rulesV1.Habitat, quantity);
   }
-  return rulesV2.habitatPurchaseCost(state, habitat, quantity);
+  return isV3VerifiedState(state)
+    ? rulesV3.habitatPurchaseCost(state, habitat, quantity)
+    : rulesV2.habitatPurchaseCost(state, habitat, quantity);
 }
 
 /**
@@ -107,7 +117,7 @@ export function createHabitatProductionUpgradeCommand(
   state: V3VerifiedCanonicalState,
   habitat: V3HabitatKind,
 ): Extract<V3GameplayCommand, { type: 'buy-habitat-production-upgrade' }> | null {
-  if (!isV2VerifiedState(state) || state.status !== 'active') return null;
+  if (isV1VerifiedState(state) || state.status !== 'active') return null;
   const milestone = nextHabitatProductionMilestone(state, habitat);
   if (milestone === null) return null;
   const cost = rulesV2.habitatProductionUpgradeCost(habitat, milestone);

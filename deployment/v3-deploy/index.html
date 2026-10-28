@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Worldseed V3 · Local Deployment</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">LOCAL DEPLOYMENT TOOL</p>
+        <h1>Deploy Worldseed V3</h1>
+        <p class="intro">Manual Hemi Sepolia deployment through your connected browser wallet.</p>
+      </header>
+
+      <section class="notice" aria-label="Deployment safety information">
+        <strong>Hemi Sepolia only · Chain ID 743111</strong>
+        <span
+          >This page never asks for or stores a private key or seed phrase. It prepares one contract
+          deployment and waits for your MetaMask approval.</span
+        >
+      </section>
+
+      <section class="card">
+        <h2>Wallet and constructor</h2>
+        <button id="connect" type="button">Connect MetaMask</button>
+        <p id="wallet-status" class="muted">Wallet not connected.</p>
+
+        <label for="owner">Owner address</label>
+        <input id="owner" autocomplete="off" spellcheck="false" placeholder="0x…" />
+        <small>The owner address must be the connected deployment wallet.</small>
+
+        <label for="attester">Attester address</label>
+        <input id="attester" autocomplete="off" spellcheck="false" placeholder="0x…" />
+        <small>The attester must be nonzero and different from the owner.</small>
+
+        <button id="review" type="button" disabled>Check network and review</button>
+      </section>
+
+      <section id="review-panel" class="card review" hidden>
+        <h2>Review before MetaMask</h2>
+        <dl id="details"></dl>
+        <label class="confirm">
+          <input id="confirm" type="checkbox" />
+          <span
+            >I reviewed the Hemi Sepolia deployment details and constructor addresses above.</span
+          >
+        </label>
+        <button id="deploy" type="button" disabled>Deploy with MetaMask</button>
+      </section>
+
+      <section class="card">
+        <h2>Status</h2>
+        <p id="status" role="status" aria-live="polite">Connect MetaMask to begin.</p>
+        <a id="explorer" hidden target="_blank" rel="noreferrer"
+          >View deployment on Hemi Sepolia Explorer</a
+        >
+      </section>
+      <footer>Artifact: WorldseedGameV3 · solc 0.8.24 · optimizer 500 · viaIR · Shanghai</footer>
+    </main>
+    <script type="module" src="/deploy.js"></script>
+  </body>
+</html>

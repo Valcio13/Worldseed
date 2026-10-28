@@ -177,13 +177,15 @@ function parseCommand(value: unknown): GameplayCommand {
     };
   }
   if (value.type === 'buy-temporary-upgrade') {
-    if (!['sunny-season', 'deep-roots'].includes(String(value.upgrade)))
+    if (!['sunny-season', 'deep-roots', 'nature-surge'].includes(String(value.upgrade)))
       throw new HttpError(400, 'Temporary upgrade is malformed.');
     return {
       type: 'buy-temporary-upgrade',
-      upgrade: value.upgrade as 'sunny-season' | 'deep-roots',
+      upgrade: value.upgrade as 'sunny-season' | 'deep-roots' | 'nature-surge',
     };
   }
+  if (value.type === 'buy-fertile-soil' || value.type === 'buy-time-bloom')
+    return { type: value.type };
   throw new HttpError(400, 'Unsupported gameplay command.');
 }
 

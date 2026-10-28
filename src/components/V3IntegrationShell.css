@@ -16,15 +16,16 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 2px;
+  min-height: 40px;
+  padding: 3px;
   border: 1px solid #d9e0d2;
   border-radius: 999px;
   background: #edf3e7;
 }
 
 .living-mode-switch button {
-  min-height: 28px;
-  padding: 0 9px;
+  min-height: 32px;
+  padding: 0 12px;
   border: 0;
   border-radius: 999px;
   color: #486852;
@@ -33,6 +34,30 @@
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* Keep every header control on the same compact, rounded button rhythm. */
+.living-topbar-meta > .worldseed-theme-toggle,
+.living-topbar-meta .audio-settings-group .worldseed-theme-toggle,
+.living-topbar-meta .audio-settings > summary,
+.living-topbar-meta .v3-living-account > summary,
+.living-topbar-meta .v3-advanced-activity > summary,
+.living-topbar-meta > .living-wallet-button {
+  min-height: 40px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.living-topbar-meta .v3-living-account > summary,
+.living-topbar-meta .v3-advanced-activity > summary {
+  padding-inline: 13px;
+}
+
+.living-topbar-meta > .living-wallet-button {
+  padding-inline: 14px;
 }
 
 .living-mode-switch button[aria-pressed='true'] {
@@ -66,9 +91,18 @@
   }
 
   .living-mode-switch button {
-    min-height: 26px;
-    padding-inline: 7px;
+    min-height: 28px;
+    padding-inline: 9px;
     font-size: 10px;
+  }
+
+  .living-mode-switch,
+  .living-topbar-meta .audio-settings-group .worldseed-theme-toggle,
+  .living-topbar-meta .audio-settings > summary,
+  .living-topbar-meta .v3-living-account > summary,
+  .living-topbar-meta .v3-advanced-activity > summary,
+  .living-topbar-meta > .living-wallet-button {
+    min-height: 36px;
   }
 }
 

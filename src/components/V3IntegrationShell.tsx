@@ -14,6 +14,7 @@ import { useV3Settlement } from '../v3/hooks/useV3Settlement';
 import type { V3RewardRules, V3UpgradeKind } from '../v3/types';
 import { TARGET_CHAIN_ID } from '../blockchain/config';
 import { TARGET_NETWORK_LABEL } from '../blockchain/networkPresentation';
+import { playIslandSound } from '../game/sound';
 import './V3IntegrationShell.css';
 
 export interface V3LivingProfile {
@@ -213,6 +214,7 @@ function VerifiedProgression({
     try {
       await flushPendingCommandsRef.current?.();
       await settlementRef.current.rebirth();
+      playIslandSound('rebirth');
       // A confirmed rebirth closes this run and makes the next session bind to
       // counter + 1. End the old run-bound verifier session before refreshing.
       authRef.current.logout();

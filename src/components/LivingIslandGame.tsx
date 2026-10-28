@@ -33,10 +33,47 @@ import {
 } from './V3IntegrationShell';
 import type { V3IslandSnapshot } from '../v3/components/V3VerifiedGameplay';
 import type { V3IslandActionHandlers } from '../v3/components/V3VerifiedGameplay';
+import type { V3GameplayCommand } from '../v3/types';
 import './LivingIsland.css';
 import { islandGrowthStage } from './islandGrowthStage';
 
 const MODE_PREFERENCE_KEY = 'worldseed:play-mode:v1';
+
+export function withLiveActionSounds(actions: V3IslandActionHandlers): V3IslandActionHandlers {
+  return {
+    ...actions,
+    buyHabitat: (...args) => {
+      actions.buyHabitat(...args);
+      playIslandSound('habitat');
+    },
+    buyProductionUpgrade: (...args) => {
+      actions.buyProductionUpgrade(...args);
+      playIslandSound('upgrade');
+    },
+    buyNatureSurge: () => {
+      actions.buyNatureSurge();
+      playIslandSound('upgrade');
+    },
+    buyFertileSoil: () => {
+      actions.buyFertileSoil();
+      playIslandSound('upgrade');
+    },
+    buyTimeBloom: () => {
+      actions.buyTimeBloom();
+      playIslandSound('upgrade');
+    },
+    sendGameplayCommand: (command: V3GameplayCommand) => {
+      actions.sendGameplayCommand(command);
+      if (command.type === 'buy-habitat') playIslandSound('habitat');
+      else if (command.type === 'buy-habitat-production-upgrade') playIslandSound('upgrade');
+      else if (
+        command.type === 'buy-temporary-upgrade' ||
+        command.type === 'buy-fertile-soil' ||
+        command.type === 'buy-time-bloom'
+      ) playIslandSound('upgrade');
+    },
+  };
+}
 
 function readModePreference(): string | null {
   try {
@@ -325,6 +362,15 @@ export function LivingIslandGame() {
     });
   }, []);
 
+  const liveHeartAction = verifiedHeartAction
+    ? () => {
+        const accepted = verifiedHeartAction();
+        if (accepted) playIslandSound('collect');
+        return accepted;
+      }
+    : null;
+  const liveActions = verifiedActions ? withLiveActionSounds(verifiedActions) : null;
+
   return (
     <>
       <LivingIslandScreen
@@ -332,8 +378,8 @@ export function LivingIslandGame() {
         mode={mode}
         verifiedModeEnabled={verifiedModeEnabled}
         verifiedIsland={verifiedIsland}
-        verifiedHeartAction={verifiedHeartAction}
-        verifiedActions={verifiedActions}
+        verifiedHeartAction={liveHeartAction}
+        verifiedActions={liveActions}
         verifiedProfile={verifiedProfile}
         verifiedSettlement={verifiedSettlement}
         onModeChange={changeMode}

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { valueFromNumber } from '../incremental/decimal';
 import { createEconomyState, type EconomyState } from '../incremental/engine';
 import { seasonIdAt } from '../incremental/season';
-import { LivingIslandGame } from './LivingIslandGame';
+import { LivingIslandGame, withLiveActionSounds } from './LivingIslandGame';
 import { initialLivingIslandMode } from './livingIslandMode';
 import * as islandAudio from '../game/sound';
 import { updateAudioPreferences } from '../game/sound';
@@ -230,6 +230,32 @@ describe('Living Island guest persistence', () => {
     const savedEconomy = mocks.saveGuestSave.mock.calls.at(-1)?.[0];
     expect(savedEconomy.nature).toEqual(valueFromNumber(1));
     expect(screen.getByTestId('nature-counter').textContent).toBe('1');
+  });
+
+  it('plays the existing habitat and upgrade sounds for accepted Live actions', () => {
+    const playSound = vi.spyOn(islandAudio, 'playIslandSound');
+    const habitat = vi.fn();
+    const upgrade = vi.fn();
+    const actions = withLiveActionSounds({
+      pending: false,
+      heartClickPending: false,
+      pendingHeartClicks: 0,
+      buyHabitat: habitat,
+      buyProductionUpgrade: upgrade,
+      buyNatureSurge: vi.fn(),
+      buyFertileSoil: vi.fn(),
+      buyTimeBloom: vi.fn(),
+      sendGameplayCommand: vi.fn(),
+      flushPendingCommands: vi.fn().mockResolvedValue(undefined),
+    });
+
+    actions.buyHabitat('water', 1);
+    actions.buyProductionUpgrade('water');
+
+    expect(habitat).toHaveBeenCalledWith('water', 1);
+    expect(upgrade).toHaveBeenCalledWith('water');
+    expect(playSound).toHaveBeenNthCalledWith(1, 'habitat');
+    expect(playSound).toHaveBeenNthCalledWith(2, 'upgrade');
   });
 
   it('saves a six-habitat production upgrade and restores it after a fresh mount', async () => {

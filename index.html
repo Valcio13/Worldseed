@@ -3,9 +3,33 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="theme-color" content="#173d3b" />
     <meta name="description" content="Restore a little island, one healthy habitat at a time." />
     <title>Worldseed — Shattered Isles</title>
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem('worldseed:theme') === 'dark' ? 'dark' : 'light';
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute('content', theme === 'dark' ? '#1b362a' : '#173d3b');
+        } catch {
+          document.documentElement.dataset.theme = 'light';
+          document.documentElement.style.colorScheme = 'light';
+          document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#173d3b');
+        }
+      })();
+    </script>
+    <style>
+      :root[data-theme='dark'],
+      :root[data-theme='dark'] body {
+        color: #f1f1e6;
+        background: #183529;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

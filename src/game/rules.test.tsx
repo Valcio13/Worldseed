@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { WagmiProvider } from 'wagmi';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -11,14 +11,15 @@ import { applyAction, createGameState, healthyAt, healthyCount, isHeartComplete 
 import type { GameState } from './types';
 
 vi.mock('../persistence/localSave', () => ({
-  loadGuestGame: async () => null,
-  saveGuestGame: async () => undefined,
+  loadGuestSave: async () => ({ kind: 'empty' }),
+  saveGuestSave: async () => undefined,
+  archiveIncompatibleSave: async () => undefined,
 }));
 
 afterEach(() => cleanup());
 
-function playWitness(seed: string): GameState {
-  let game = createGameState(seed, false);
+function playWitness(seed: string, demo = false): GameState {
+  let game = createGameState(seed, demo);
   for (const step of WITNESS) {
     const index = step.y * 7 + step.x;
     const result =
@@ -81,10 +82,20 @@ describe('deterministic island generation', () => {
       expect(game.inventory.forest).toBeGreaterThanOrEqual(0);
     }
   });
+
+  it('completes the guest loop with starter supplies and milestone rewards', () => {
+    const game = playWitness('guest-playthrough', true);
+    expect(game.demo).toBe(true);
+    expect(game.complete).toBe(true);
+    expect(game.unlockedThrough).toBe(4);
+    expect(game.inventory.water).toBeGreaterThanOrEqual(0);
+    expect(game.inventory.grass).toBeGreaterThanOrEqual(0);
+    expect(game.inventory.forest).toBeGreaterThanOrEqual(0);
+  });
 });
 
 describe('habitat and milestone rules', () => {
-  it('keeps guest demo resources unlimited without touching wallet rewards', () => {
+  it('gives guest mode a finite, recoverable resource loop', () => {
     let game = createGameState('infinite-demo', true);
     for (let iteration = 0; iteration < 100; iteration += 1) {
       const placed = applyAction(game, { type: 'place', index: 8, habitat: 'water' });
@@ -93,7 +104,7 @@ describe('habitat and milestone rules', () => {
       expect(gathered.error).toBeUndefined();
       game = gathered.state;
     }
-    expect(game.inventory.water).toBe(20);
+    expect(game.inventory.water).toBe(1);
     expect(game.demo).toBe(true);
   });
 
@@ -127,7 +138,7 @@ describe('habitat and milestone rules', () => {
 });
 
 describe('first guest journey', () => {
-  it('opens the tutorial, places healthy Water and Grass, and unlocks the next region', async () => {
+  it('gathers Nature from the Heart and buys the first automatic habitat', async () => {
     const user = userEvent.setup();
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -138,37 +149,16 @@ describe('first guest journey', () => {
       </WagmiProvider>,
     );
 
-    await user.click(screen.getByRole('button', { name: /how to play/i }));
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /let’s restore/i }));
-
-    await user.hover(screen.getByRole('gridcell', { name: /clearing, row 1, column 1/i }));
-    expect(screen.getByRole('gridcell', { name: /invalid preview/i })).toHaveAttribute(
-      'title',
-      'That tile cannot hold a habitat.',
-    );
-
-    await user.click(screen.getByRole('gridcell', { name: /clearing, row 2, column 2/i }));
-    expect(screen.getByRole('gridcell', { name: /clearing, row 2, column 2, water/i })).toHaveClass(
-      'tile--just-restored',
-    );
-    await user.click(screen.getByRole('button', { name: /grass/i }));
-    await user.click(screen.getByRole('gridcell', { name: /clearing, row 3, column 2/i }));
-
-    expect(
-      screen.getByRole('gridcell', { name: /clearing, row 2, column 2, water, healthy/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('gridcell', { name: /clearing, row 3, column 2, grass, healthy/i }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('Dry Basin')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /regions & details/i }));
-    expect(screen.getByText('Dry Basin')).toBeInTheDocument();
-    expect(screen.queryByText(/save progress/i)).not.toBeInTheDocument();
+    for (let click = 0; click < 10; click += 1) {
+      await user.click(screen.getByRole('button', { name: /click the island heart to collect 1 nature/i }));
+    }
+    await user.click(screen.getByRole('button', { name: /buy 1 water/i }));
+    expect(screen.getByTestId('nature-counter')).toHaveTextContent('0');
+    expect(screen.getAllByText('0.3').length).toBeGreaterThan(0);
+    expect(screen.getByText(/bought 1 water habitat/i)).toBeInTheDocument();
   });
 
-  it('opens the Traveling Merchant and World Tree from their island landmarks', async () => {
-    const user = userEvent.setup();
+  it('presents the Living Island as the primary screen with the four core actions', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <WagmiProvider config={wagmiConfig}>
@@ -178,21 +168,31 @@ describe('first guest journey', () => {
       </WagmiProvider>,
     );
 
-    await user.click(screen.getByRole('button', { name: /traveling merchant habitat supplies/i }));
-    expect(screen.getByRole('dialog', { name: /traveling merchant/i })).toBeInTheDocument();
-    await user.keyboard('{Escape}');
-    expect(screen.queryByRole('dialog', { name: /traveling merchant/i })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /open world tree community progress/i }));
-    expect(screen.getByRole('dialog', { name: /world tree/i })).toBeInTheDocument();
-    await user.keyboard('{Escape}');
-    await user.click(screen.getByRole('button', { name: /open seed shrine 2048 grove game/i }));
-    expect(await screen.findByRole('heading', { name: /grow your grove/i })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /living island, seed stage/i })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /island resources/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /habitat shop/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /rebirth/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /upgrades/i })).toBeInTheDocument();
+    expect(screen.queryByRole('gridcell')).not.toBeInTheDocument();
   });
 
-  it('keeps all 49 cells available under the compact HUD and opens game panels', async () => {
+  it('keeps wallet controls minimal and leaves restoration landmarks out of the primary screen', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <WagmiProvider config={wagmiConfig}>
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </WagmiProvider>,
+    );
+
+    expect(screen.getByRole('button', { name: /connect wallet/i })).toBeInTheDocument();
+    expect(screen.queryByRole('gridcell')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /traveling merchant/i })).not.toBeInTheDocument();
+  });
+
+  it('offers simple habitat purchases without manual tile controls', () => {
     localStorage.clear();
-    const user = userEvent.setup();
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <WagmiProvider config={wagmiConfig}>
@@ -202,24 +202,9 @@ describe('first guest journey', () => {
       </WagmiProvider>,
     );
 
-    expect(screen.getAllByRole('gridcell')).toHaveLength(49);
-    const grass = screen.getByRole('button', { name: /select grass, unlimited demo supply/i });
-    await user.click(grass);
-    expect(grass).toHaveAttribute('aria-pressed', 'true');
-
-    await user.click(screen.getByRole('button', { name: /regions & details/i }));
-    expect(screen.getByRole('dialog', { name: /island details/i })).toBeInTheDocument();
-    expect(screen.getByText('Dry Basin')).toBeInTheDocument();
-    await user.keyboard('{Escape}');
-    expect(screen.queryByRole('dialog', { name: /island details/i })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /open game settings/i }));
-    const settings = screen.getByRole('dialog', { name: /game settings/i });
-    expect(settings).toBeInTheDocument();
-    const soundToggle = screen.getByText('Island sounds').closest('button');
-    expect(soundToggle).not.toBeNull();
-    await user.click(soundToggle!);
-    expect(soundToggle).toHaveAttribute('aria-pressed', 'false');
-    expect(within(settings).getByText('Off')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /buy 1 water/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /buy maximum grass/i })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /place/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument();
   });
 });

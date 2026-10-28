@@ -30,6 +30,9 @@ import {
   type IslandGrowthStage,
 } from './islandGrowthStage';
 import type { V3IslandSnapshot } from '../v3/components/V3VerifiedGameplay';
+import type { V3IslandActionHandlers } from '../v3/components/V3VerifiedGameplay';
+import { V3_UPGRADE_CONFIG, type V3UpgradeKind } from '../v3/types';
+import type { V3LivingProfile, V3LivingSettlementControls } from './V3IntegrationShell';
 
 type HabitatUpgradeState = 'locked' | 'available' | 'unaffordable' | 'purchased';
 
@@ -238,6 +241,9 @@ export interface LivingIslandScreenProps {
   verifiedModeEnabled?: boolean;
   verifiedIsland?: V3IslandSnapshot | null;
   verifiedHeartAction?: (() => void) | null;
+  verifiedActions?: V3IslandActionHandlers | null;
+  verifiedProfile?: V3LivingProfile | null;
+  verifiedSettlement?: V3LivingSettlementControls | null;
   nextSeasonStart: number;
   saveLabel: string;
   walletControl?: ReactNode;
@@ -245,12 +251,226 @@ export interface LivingIslandScreenProps {
   verifiedProgression?: ReactNode;
   onModeChange?: (mode: LivingIslandMode) => void;
   notice?: string;
+  noticeImportant?: boolean;
+  onNoticeDismiss?: () => void;
   onHeartClick: () => void;
   onStateChange: (result: ActionResult) => void;
   onRebirth: () => void;
 }
 
 export type LivingIslandMode = 'guest' | 'verified';
+
+function VerifiedIslandPanel({
+  island,
+  profile,
+  actions,
+  settlement,
+}: {
+  island: V3IslandSnapshot | null;
+  profile: V3LivingProfile | null;
+  actions: V3IslandActionHandlers | null;
+  settlement: V3LivingSettlementControls | null;
+}) {
+  const scoreTier = island?.scoreTier ?? 0;
+  const rebirthGoal = profile?.rebirthThresholdTier ?? 0;
+  const progress = rebirthGoal > 0 ? Math.min(100, (scoreTier / rebirthGoal) * 100) : 0;
+  const canRebirth = Boolean(
+    island && profile?.activeRun && profile.authenticated && settlement?.canSettle &&
+      !settlement.pending && rebirthGoal > 0 && scoreTier >= rebirthGoal,
+  );
+  const habitatNames: Record<string, { name: string; icon: string; description: string }> = {
+    water: { name: 'Water', icon: '≈', description: 'A cool stream brings life.' },
+    grass: { name: 'Grass', icon: '✿', description: 'Green ground spreads across the isle.' },
+    forest: { name: 'Forest', icon: '♧', description: 'Trees shelter a thriving island.' },
+    mountain: { name: 'Mountain', icon: '▲', description: 'A high ridge reaches into the clouds.' },
+    'crystal-cavern': { name: 'Crystal Cavern', icon: '◇', description: 'A quiet cavern glimmers beneath the isle.' },
+    'ancient-grove': { name: 'Ancient Grove', icon: '✣', description: 'Old roots hold a flourishing sanctuary.' },
+  };
+  const upgradeKinds: V3UpgradeKind[] = ['growth', 'efficiency', 'awakening'];
+
+  return (
+    <>
+      <article className="living-rebirth-card" id="rebirth" aria-labelledby="living-rebirth-title">
+        <div className="living-section-heading">
+          <div>
+            <span className="living-eyebrow">VERIFIED RUN</span>
+            <h2 id="living-rebirth-title">Rebirth</h2>
+          </div>
+          <span className="living-rebirth-count">
+            {profile?.ready ? profile.seasonRebirths : '—'} this season
+          </span>
+        </div>
+        <p className="living-rebirth-progress-copy">
+          Score tier <strong>{island ? scoreTier : '—'}</strong> / <strong>{rebirthGoal || '—'}</strong>
+        </p>
+        <div
+          className="living-rebirth-track"
+          role="progressbar"
+          aria-label="Verified Rebirth progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress)}
+        >
+          <i style={{ width: `${progress}%` }} />
+        </div>
+        {!profile?.activeRun ? (
+          <p className="living-rebirth-locked" role="status">Open Verified account to authenticate and start a run.</p>
+        ) : !island ? (
+          <p className="living-rebirth-locked" role="status">Syncing verified island progress. Open Advanced / Activity if this takes too long.</p>
+        ) : canRebirth ? (
+          <p className="living-rebirth-ready" role="status">Rebirth is ready. Rewards settle from this verified run.</p>
+        ) : (
+          <p className="living-rebirth-locked" role="status">
+            {profile?.authenticated
+              ? `Reach score tier ${rebirthGoal} to unlock Rebirth.`
+              : 'Authenticate this run to settle verified progress.'}
+          </p>
+        )}
+        <div className="living-rebirth-reward">
+          Seasonal PP <strong>{profile?.ready ? profile.seasonalPP : '—'}</strong>
+          <span>·</span>
+          Seasonal CP <strong>{profile?.ready ? profile.seasonalCP : '—'}</strong>
+          <span>·</span>
+          Next CP milestone <strong>{profile?.ready ? profile.nextCpMilestoneTier ?? '—' : '—'}</strong>
+        </div>
+        <div className="living-verified-rebirth-actions">
+          <button
+            type="button"
+            className="living-rebirth-button living-rebirth-button--secondary"
+            onClick={() => settlement?.recordPoints()}
+            disabled={!island || !profile?.authenticated || !settlement?.canSettle || settlement.pending}
+          >
+            Record Points
+          </button>
+          <button
+            className="living-rebirth-button"
+            type="button"
+            onClick={() => settlement?.rebirth()}
+            disabled={!canRebirth}
+          >
+            {settlement?.pending ? 'Settling…' : <>Rebirth <span>→</span></>}
+          </button>
+        </div>
+      </article>
+
+      <section className="living-shop" aria-labelledby="habitat-shop-title">
+        <div className="living-section-heading">
+          <div>
+            <span className="living-eyebrow">VERIFIER-ACCEPTED PROGRESS</span>
+            <h1 id="habitat-shop-title">Habitat shop</h1>
+          </div>
+          <span className="living-resource-chip">{island?.nature ?? '—'} Nature</span>
+        </div>
+        {!island?.habitats.length ? (
+          <p className="living-verified-empty" role="status">
+            {profile?.activeRun
+              ? profile.authenticated
+                ? 'Syncing this run’s verified habitats. Open Advanced / Activity if this takes too long.'
+                : 'Authenticate to load this run’s habitats.'
+              : 'Start a verified run to unlock its habitat shop.'}
+          </p>
+        ) : (
+          <div className="living-habitat-list">
+            {island.habitats.map((habitat) => {
+              const info = habitatNames[habitat.id];
+              return (
+                <article className={`living-habitat living-habitat--${habitat.id}`} key={habitat.id}>
+                  <span className="living-habitat-icon" aria-hidden="true">{info.icon}</span>
+                  <div className="living-habitat-copy">
+                    <strong>{info.name}</strong>
+                    <span>Level {habitat.level}</span>
+                    <small>{info.description}</small>
+                  </div>
+                  <div className="living-habitat-actions">
+                    <button
+                      type="button"
+                      onClick={() => actions?.buyHabitat(habitat.id, 1)}
+                      disabled={!actions || actions.pending || !habitat.canBuyOne}
+                      aria-label={`Buy 1 verified ${info.name}`}
+                    >
+                      +1 <small>{habitat.nextCost ?? '—'}</small>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => actions?.buyHabitat(habitat.id, habitat.maxAffordable)}
+                      disabled={!actions || actions.pending || habitat.maxAffordable < 1}
+                      aria-label={`Buy maximum verified ${info.name}`}
+                    >
+                      Max
+                    </button>
+                  </div>
+                  {habitat.productionUpgrades.length > 0 && (
+                    <details className="living-habitat-upgrades">
+                      <summary aria-label={`${info.name} verified milestone upgrades`}>
+                        Milestone upgrades <span>{habitat.purchasedUpgradeCount}/4</span>
+                      </summary>
+                      <div className="living-habitat-upgrade-list">
+                        {habitat.productionUpgrades.map((upgrade) => (
+                          <div
+                            className={`living-habitat-upgrade living-habitat-upgrade--${upgrade.purchased ? 'purchased' : upgrade.available ? 'available' : 'locked'}`}
+                            key={upgrade.milestone}
+                          >
+                            <span>
+                              <strong>Level {upgrade.milestone}</strong>
+                              <small>{upgrade.purchased ? 'Purchased' : `${upgrade.cost} Nature`}</small>
+                            </span>
+                            {!upgrade.purchased && (
+                              <span className="living-habitat-upgrade-meta">
+                                <button
+                                  type="button"
+                                  disabled={!upgrade.available || !actions || actions.pending}
+                                  onClick={() => actions?.buyProductionUpgrade(habitat.id)}
+                                  aria-label={`Buy ${info.name} level ${upgrade.milestone} production upgrade`}
+                                >
+                                  {upgrade.available ? 'Buy upgrade' : habitat.level < upgrade.milestone ? `Locked · Level ${upgrade.milestone}` : 'Locked · previous upgrade'}
+                                </button>
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <small className="living-habitat-upgrade-note">V2 run · sequential verified upgrades</small>
+                    </details>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <article className="living-upgrades-card">
+        <div className="living-section-heading">
+          <div>
+            <span className="living-eyebrow">VERIFIED SEASON</span>
+            <h2>Upgrades</h2>
+          </div>
+          <span className="living-pp-chip">{profile?.ready ? profile.seasonalPP : '—'} PP</span>
+        </div>
+        <div className="living-verified-ledger">
+          <span>Season CP <strong>{profile?.ready ? profile.seasonalCP : '—'}</strong></span>
+          <span>Lifetime CP <strong>{profile?.ready ? profile.lifetimeCP : '—'}</strong></span>
+          <span>Lifetime Nature <strong>{profile?.ready ? formatVerifiedAtoms(profile.lifetimeNature) : '—'}</strong></span>
+          <span>Accumulated Rebirth score <strong>{profile?.ready ? formatVerifiedCount(profile.accumulatedScore) : '—'}</strong></span>
+        </div>
+        <div className="living-upgrade-list">
+          {upgradeKinds.map((kind) => (
+            <div className="living-upgrade living-upgrade--read-only" key={kind}>
+              <span>
+                  <strong>{V3_UPGRADE_CONFIG[kind].label} <small>Lv. {profile?.ready ? profile.upgradeLevels[kind] : '—'}</small></strong>
+                <small>{V3_UPGRADE_CONFIG[kind].description}</small>
+              </span>
+              <b>{profile?.activeRun ? 'Run-start choice' : 'Next run'}</b>
+            </div>
+          ))}
+        </div>
+        <p className="living-verified-empty">
+          Verified PP choices are applied when a run starts. Guest-only temporary boosts are unavailable here.
+        </p>
+      </article>
+    </>
+  );
+}
 
 function rebirthProgress(state: EconomyState): number {
   const goal = rebirthRequirement(state);
@@ -271,16 +491,42 @@ function timeUntil(timestamp: number): string {
   return days ? `${days}d ${hours}h` : `${hours}h ${minutes}m`;
 }
 
+function formatVerifiedAtoms(value: string | undefined): string {
+  if (!value) return '—';
+  try {
+    const atoms = BigInt(value);
+    const scale = 1_000_000_000_000n;
+    const whole = atoms / scale;
+    const fraction = (atoms % scale).toString().padStart(12, '0').replace(/0+$/, '');
+    return fraction
+      ? `${new Intl.NumberFormat().format(whole)}.${fraction}`
+      : new Intl.NumberFormat().format(whole);
+  } catch {
+    return '—';
+  }
+}
+
+function formatVerifiedCount(value: string | undefined): string {
+  if (!value) return '0';
+  try {
+    return new Intl.NumberFormat().format(BigInt(value));
+  } catch {
+    return '0';
+  }
+}
+
 function LivingIsland({
   state,
   mode,
   verifiedIsland,
   onHeartClick,
+  actionPending = false,
 }: {
   state: EconomyState;
   mode: LivingIslandMode;
   verifiedIsland: V3IslandSnapshot | null;
   onHeartClick: (() => void) | null;
+  actionPending?: boolean;
 }) {
   const isVerified = mode === 'verified';
   const stage = isVerified
@@ -418,7 +664,7 @@ function LivingIsland({
       <button
         className={`island-heart${heartClicks ? ' island-heart--clicked' : ''}`}
         type="button"
-        disabled={isVerified && !onHeartClick}
+        disabled={isVerified && (!onHeartClick || actionPending)}
         onClick={() => {
           if (!onHeartClick) return;
           onHeartClick();
@@ -436,7 +682,7 @@ function LivingIsland({
           </span>
         )}
         <span className="island-heart-label">
-          {isVerified ? 'Verified · Collect Nature' : 'Collect Nature'}
+          {isVerified ? (actionPending ? 'Sending…' : 'Verified · Collect Nature') : 'Collect Nature'}
         </span>
         <strong>+1</strong>
       </button>
@@ -473,6 +719,9 @@ export function LivingIslandScreen({
   verifiedModeEnabled = false,
   verifiedIsland = null,
   verifiedHeartAction = null,
+  verifiedActions = null,
+  verifiedProfile = null,
+  verifiedSettlement = null,
   nextSeasonStart,
   saveLabel,
   walletControl,
@@ -480,6 +729,8 @@ export function LivingIslandScreen({
   verifiedProgression,
   onModeChange = () => undefined,
   notice,
+  noticeImportant = false,
+  onNoticeDismiss,
   onHeartClick,
   onStateChange,
   onRebirth,
@@ -490,11 +741,12 @@ export function LivingIslandScreen({
   return (
     <div className="living-game">
       <header className={`living-topbar${verifiedModeEnabled ? ' living-topbar--modes' : ''}`}>
-        <a className="living-brand" href="#living-home" aria-label="Worldseed home">
-          <span className="living-brand-seed" aria-hidden="true">
-            ✦
-          </span>
-          <span>worldseed</span>
+        <a className="living-brand" href="#living-home">
+          <img
+            className="living-brand-logo"
+            src="/assets/branding/worldseed-logo.png"
+            alt="Worldseed"
+          />
         </a>
         <div className="living-topbar-meta">
           {verifiedModeEnabled ? (
@@ -529,7 +781,7 @@ export function LivingIslandScreen({
             </span>
           )}
           {audioControls}
-          {walletControl}
+          {mode === 'verified' ? verifiedProgression : walletControl}
         </div>
       </header>
 
@@ -566,6 +818,7 @@ export function LivingIslandScreen({
               mode={mode}
               verifiedIsland={verifiedIsland}
               onHeartClick={mode === 'verified' ? verifiedHeartAction : onHeartClick}
+              actionPending={mode === 'verified' && Boolean(verifiedActions?.pending)}
             />
           </div>
           <aside className="living-control-panel" aria-label="Game controls">
@@ -780,22 +1033,41 @@ export function LivingIslandScreen({
                 </article>
               </>
             ) : (
-              verifiedProgression
+              <>
+                {(verifiedActions?.pending || verifiedSettlement?.pending) && (
+                  <p className="living-verified-pending" role="status" aria-live="polite">
+                    <i aria-hidden="true" /> Saving verified progress…
+                  </p>
+                )}
+                <VerifiedIslandPanel
+                  island={verifiedIsland}
+                  profile={verifiedProfile}
+                  actions={verifiedActions}
+                  settlement={verifiedSettlement}
+                />
+              </>
             )}
           </aside>
         </div>
 
-        {notice && (
-          <p className="living-notice" role="status" aria-live="polite">
-            {notice}
-          </p>
-        )}
         <footer className="living-footer">
           {mode === 'guest'
             ? `Guest progress is saved in this browser · simulated points are not wallet rewards · reset in ${timeUntil(nextSeasonStart)}`
             : 'Verified progress is sourced from the V3 verifier and contract. Guest saves are separate.'}
         </footer>
       </main>
+      {notice && (
+        <div
+          className={`living-notice${noticeImportant ? ' living-notice--important' : ''}`}
+          role={noticeImportant ? 'alert' : 'status'}
+          aria-live={noticeImportant ? 'assertive' : 'polite'}
+        >
+          <span>{notice}</span>
+          <button type="button" onClick={onNoticeDismiss} aria-label="Dismiss notification">
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }

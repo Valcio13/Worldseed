@@ -1,6 +1,6 @@
 # Living Characters and Game HUD
 
-The island's 7×7 board, restoration rules, and contract interfaces remain unchanged. The HUD now keeps habitat selection, health, local/onchain save status, Gold, and region details available without a permanent sidebar. `Regions & details` opens the former inventory, milestone, Heart, and World Tree dashboard in a keyboard-dismissable side panel. Settings and the tutorial open game-style dialogs. The Seed Shrine, Merchant, and World Tree stay in the landmark strip outside the placement grid.
+The island's 7×7 board, restoration rules, and contract interfaces remain unchanged. The HUD now keeps habitat selection, health, local/onchain save status, and region details available without a permanent sidebar. `Regions & details` opens the former inventory, milestone, Heart, and World Tree dashboard in a keyboard-dismissable side panel. Settings and the tutorial open game-style dialogs. The Merchant and World Tree stay in the landmark strip outside the placement grid. The old Seed Shrine entry point has been removed with the puzzle from the active game interface.
 
 ## Character sprites
 

@@ -1,12 +1,13 @@
 # Worldseed: Shattered Isles
 
-Worldseed is a cozy island restoration game built for the Hemi Arcade 2 contest. Restore a small 7×7 island by placing Water, Grass, and Forest habitats, connect healthy ecosystems, uncover five regions, and complete the Island Heart. The shared World Tree records weekly contributions from wallet players.
+Worldseed is a cozy weekly incremental island-building game. Generate Nature from the Island Heart, grow habitats, and rebirth to build seasonal momentum. Seasons begin Monday at 00:00 UTC and last seven days. The 7×7 restoration scene remains available as optional island content.
 
 ## Gameplay modes
 
-- **Guest mode:** Play and save an island locally without connecting a wallet. Guest resources are practice resources and do not create onchain rewards.
-- **Wallet mode:** Connect an injected browser wallet and use Hemi Sepolia. Start a wallet-bound island, synchronize restoration progress, claim region rewards, play rewarded 2048 rounds, spend verified Gold in the habitat shop, finish the island, and contribute to the World Tree.
-- **2048 practice:** Play locally without wallet prompts or spendable rewards. Rewarded rounds are separate and commit a start transaction plus move checkpoints.
+- **Guest mode:** Play and save the complete incremental loop locally: generate Nature, upgrade habitats, and rebirth for simulated seasonal PP and CP. These guest points are never wallet rewards.
+- **Wallet mode:** The existing Hemi Sepolia V1 island and World Tree integration remains in the repository. A feature-flagged V3 verified progression shell uses a V3 contract and verifier API; it requires a separately deployed and configured V3 service. Guest progress cannot be converted into wallet rewards.
+
+The project roadmap has five milestones. See [docs/roadmap.md](docs/roadmap.md) for their status and scope.
 
 ## Hemi Sepolia deployment
 
@@ -29,7 +30,7 @@ Copy-Item .env.example .env.local
 npm run dev
 ```
 
-Vite serves the app at `http://localhost:5173/` and uses strict port checking. The public testnet contract address is in `.env.example`. `.env.local` is ignored by Git. Frontend hosting does not require a private key, RPC credential, or backend service.
+Vite serves the app at `http://localhost:5173/` and uses strict port checking. The public testnet contract address is in `.env.example`. `.env.local` is ignored by Git. Guest play and the existing V1 frontend do not need a backend service; verified V3 play also requires its Worker verifier and D1 configuration.
 
 ## Development and verification commands
 
@@ -47,26 +48,35 @@ npm run contract:test
 
 `npm run build` typechecks and writes the production site to `dist/`. Hardhat compiles with Solidity 0.8.24; the lockfile pins the installed dependency graph for `npm ci`.
 
-## Deploy the frontend to Cloudflare Pages
+## Deploy to Cloudflare Workers
 
-Create a Cloudflare Pages project from the repository and set:
+Worldseed uses two separate Cloudflare Workers. The root `wrangler.toml` configures the static-assets-only frontend Worker named `worldseed`; it serves Vite's `dist/` files and does not have a D1 binding or verifier entrypoint. `wrangler.v3-verifier.toml` configures `worldseed-v3-verifier` with the `WORLDSEED_DB` D1 binding. The frontend sends `/api/v3/*` requests to the verifier's separate HTTPS origin using `VITE_VERIFIER_API_URL`; its allowed origin must match the frontend origin.
 
-| Setting                | Value                                                                        |
-| ---------------------- | ---------------------------------------------------------------------------- |
-| Build command          | `npm run build`                                                              |
-| Build output directory | `dist`                                                                       |
-| Node.js version        | `22`                                                                         |
-| Environment variable   | `VITE_WORLDSEED_CONTRACT_ADDRESS=0x133B0fDbaC7D6535C68Be5945d15C328F3d371E4` |
+Before building, configure the public Vite variables in the build environment:
 
-The contract address is public and embedded in the browser build. Do not add `HEMI_SEPOLIA_PRIVATE_KEY`, `HEMI_MAINNET_PRIVATE_KEY`, or other secrets to Pages settings. Pages provides SPA fallback for this project because it has no top-level `404.html`. After deployment, test the HTTPS origin, refresh, the Seed Shrine lazy-loaded 2048 screen, wallet connection, and direct navigation.
+- `VITE_WORLDSEED_CONTRACT_ADDRESS` for the existing V1 Hemi Sepolia contract, if those flows are needed.
+- `VITE_ENABLE_V3_IDLE=true` to expose the Guest / Verified shell.
+- `VITE_WORLDSEED_V3_CONTRACT_ADDRESS` for the deployed V3 contract on the frontend's configured Hemi Sepolia chain (`743111`).
+- Leave `VITE_VERIFIER_API_URL` empty for the same-origin Worker API; set it to the verifier's HTTPS base URL only if the API is hosted separately. Do not append `/api/v3`.
 
-See [deployment and release gates](docs/deployment.md) for testnet details, wallet QA steps, and the Mainnet checklist. Cloudflare Pages has not been deployed from this workspace.
+The V3 contract address is public and embedded in browser assets. Verifier runtime configuration belongs to `wrangler.v3-verifier.toml`; `V3_RPC_URL` and `V3_ATTESTER_PRIVATE_KEY` are Cloudflare Worker secrets and must never be placed in `VITE_*` variables, source, or the browser build. The signing key must match the deployed contract's `attester()` value. `.env.example` contains public frontend settings and empty local deployment placeholders, not production secrets.
+
+Build and deploy the frontend Worker after setting the public Vite variables in its build environment:
+
+```powershell
+npm ci
+npm run build
+npx wrangler deploy --dry-run
+npx wrangler deploy
+```
+
+`wrangler deploy` from the project root publishes only the static frontend Worker. The separate verifier is deployed with `npx wrangler deploy --config wrangler.v3-verifier.toml`; it uses its own D1 binding and Cloudflare secrets. Both are explicit deployment actions. See [deployment and release gates](docs/deployment.md), [V3 Worker and D1 setup](docs/v3-cloudflare-workers-d1.md), and the [contest release checklist](docs/contest-release-checklist.md) for configuration and verification steps. The verifier `/health` endpoint was previously reported live; the latest frontend changes in this commit have not been deployed or remotely verified.
 
 ## Project structure
 
 - `src/game/`: deterministic island generation, placement rules, and restoration state.
-- `src/puzzle/`: 2048 engine and reward calculations.
-- `src/components/`: island, terrain, and puzzle interfaces.
+- `src/puzzle/`: temporarily retained legacy puzzle engine and wallet reward code; not exposed in current game navigation or progression.
+- `src/components/`: island and terrain interfaces, plus a temporarily retained legacy puzzle screen.
 - `src/blockchain/`: Hemi Sepolia configuration, contract ABI, and transaction handling.
 - `src/persistence/`: local guest island storage.
 - `contracts/`, `contract-test/`: Solidity ledger and Hardhat tests.
@@ -75,9 +85,8 @@ See [deployment and release gates](docs/deployment.md) for testnet details, wall
 ## Known limitations and release status
 
 - A separate clean-wallet browser journey on the public HTTPS build is still required. Automated tests and direct contract transactions do not verify injected-wallet prompts or hosted browser behavior.
-- Cloudflare Pages hosting has not been configured or published.
-- The production build reports a 611.81 KB main JavaScript chunk (184.91 KB gzip). The 2048 game is already emitted as a separate lazy-loaded chunk.
-- Rewarded 2048 rounds require multiple wallet approvals. A previously exercised 140-move round used eight approvals and 9,672,779 gas; actual usage varies.
+- The latest frontend source still needs a Cloudflare Workers deployment and browser verification. The separate verifier's `/health` endpoint was previously reported healthy; this repository checkout cannot confirm its current remote state or secrets.
+- Legacy puzzle logic and contract entry points remain temporarily in source, but the game is no longer accessible from the player-facing app and grants no incremental progression.
 - Economy values and contest acceptance remain subject to release review. Do not treat this project as Mainnet-ready based on automated tests alone.
 
 ## License

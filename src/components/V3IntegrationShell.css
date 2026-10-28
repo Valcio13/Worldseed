@@ -1,11 +1,3 @@
-.v3-integration-nav {
-  display: flex;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  background: #223d32;
-}
-
 .v3-mode-badge {
   display: inline-flex;
   align-items: center;
@@ -53,194 +45,6 @@
   outline-offset: 2px;
 }
 
-.v3-island-mode {
-  min-width: 0;
-  border: 1px solid #b8c9af;
-  border-radius: 12px;
-  background: #fffef8;
-}
-
-.v3-island-mode > summary {
-  min-height: 44px;
-  padding: 12px 14px;
-  color: #365b43;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.v3-island-mode > summary:focus-visible {
-  outline: 2px solid #725a2b;
-  outline-offset: 2px;
-}
-
-.v3-integration-guest[hidden] {
-  display: none;
-}
-
-.v3-integration-nav button,
-.v3-integration-heading button {
-  min-height: 2.5rem;
-  padding: 0.55rem 0.9rem;
-  border: 1px solid #8da77f;
-  border-radius: 0.65rem;
-  color: #f8f0ce;
-  background: #365b49;
-  font: inherit;
-  cursor: pointer;
-}
-
-.v3-integration-nav button[aria-pressed='true'] {
-  color: #293f32;
-  background: #e9dba7;
-}
-
-.v3-integration-page {
-  width: min(48rem, calc(100% - 2rem));
-  margin: 2rem auto;
-  padding: clamp(1rem, 4vw, 2rem);
-  border: 2px solid #739477;
-  border-radius: 1rem;
-  color: #283c31;
-  background: #f4e8bf;
-}
-
-.v3-integration-page--embedded {
-  width: auto;
-  max-height: min(70dvh, 850px);
-  margin: 0 10px 12px;
-  padding: 12px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  border-width: 1px;
-  border-radius: 10px;
-}
-
-.v3-integration-page--embedded .v3-integration-heading h1 {
-  font-size: 1.2rem;
-}
-
-.v3-integration-page--embedded .v3-integration-explanation {
-  margin-block: 0.5rem;
-  font-size: 0.88rem;
-}
-
-.v3-integration-page--embedded .v3-integration-auth,
-.v3-integration-page--embedded .v3-integration-flow-status,
-.v3-integration-page--embedded .v3-status-panel,
-.v3-integration-page--embedded .v3-run-controls,
-.v3-integration-page--embedded .v3-verified-gameplay {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.v3-integration-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.v3-integration-heading p {
-  margin: 0 0 0.3rem;
-  color: #66815f;
-  font-size: 0.75rem;
-  letter-spacing: 0.12em;
-}
-
-.v3-integration-heading h1 {
-  margin: 0;
-}
-
-.v3-integration-heading-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.v3-integration-explanation,
-.v3-integration-pending {
-  line-height: 1.55;
-}
-
-.v3-integration-pending {
-  padding: 0.8rem;
-  border-radius: 0.6rem;
-  background: #e8ddb8;
-}
-
-.v3-integration-auth,
-.v3-integration-flow-status,
-.v3-integration-disabled-actions {
-  margin: 1rem 0;
-  padding: 1rem;
-  border: 1px solid #c8ba8c;
-  border-radius: 0.7rem;
-  background: #eee2bd;
-}
-
-.v3-integration-section-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.v3-integration-section-heading h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.v3-integration-auth p,
-.v3-integration-disabled-actions p {
-  line-height: 1.5;
-}
-
-.v3-integration-action {
-  min-height: 2.5rem;
-  padding: 0.55rem 0.9rem;
-  border: 1px solid #547b5d;
-  border-radius: 0.6rem;
-  color: #fff9df;
-  background: #365b49;
-  font: inherit;
-  cursor: pointer;
-}
-
-.v3-integration-action:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.v3-integration-error,
-.v3-integration-flow-status--error {
-  color: #8d2e2e;
-}
-
-.v3-integration-flow-status--success {
-  color: #245d35;
-  overflow-wrap: anywhere;
-}
-
-.v3-integration-disabled-actions {
-  min-width: 0;
-}
-
-.v3-integration-disabled-actions:disabled {
-  opacity: 0.78;
-}
-
-.v3-integration-disabled-actions > p {
-  margin-bottom: 0;
-}
-
-@media (max-width: 520px) {
-  .v3-integration-heading {
-    align-items: stretch;
-    flex-direction: column;
-  }
-}
-
 @media (max-width: 700px) {
   .living-topbar--modes {
     height: auto;
@@ -266,19 +70,207 @@
     padding-inline: 7px;
     font-size: 10px;
   }
-
-  .v3-integration-page--embedded {
-    max-height: none;
-    margin-inline: 0;
-    padding: 10px;
-    overflow: visible;
-  }
 }
 
 .living-save-overlay section {
   max-height: calc(100dvh - 40px);
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* Verified controls stay in the Living Island header; operational detail is opt-in. */
+.v3-living-tools {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.v3-living-account,
+.v3-advanced-activity {
+  position: relative;
+  min-width: 0;
+  color: #294d3d;
+  font-size: 11px;
+}
+
+.v3-living-account > summary,
+.v3-advanced-activity > summary {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: 1px solid #d9e0d2;
+  border-radius: 8px;
+  background: #fffef8;
+  font-weight: 750;
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.v3-living-account > summary::-webkit-details-marker,
+.v3-advanced-activity > summary::-webkit-details-marker {
+  display: none;
+}
+
+.v3-living-account > summary::after,
+.v3-advanced-activity > summary::after {
+  content: '⌄';
+  color: #5e6f63;
+}
+
+.v3-living-account[open] > summary,
+.v3-advanced-activity[open] > summary {
+  border-color: #a8be9a;
+  background: #edf3e7;
+}
+
+.v3-living-account > summary:focus-visible,
+.v3-advanced-activity > summary:focus-visible,
+.v3-living-account-panel button:focus-visible,
+.v3-advanced-panel button:focus-visible {
+  outline: 2px solid #725a2b;
+  outline-offset: 2px;
+}
+
+.v3-living-account-panel,
+.v3-advanced-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 7px);
+  right: 0;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(72dvh, 620px);
+  padding: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #c8d4bf;
+  border-radius: 11px;
+  background: #fffef8;
+  box-shadow: 0 12px 32px rgb(41 77 61 / 20%);
+}
+
+.v3-living-account-panel {
+  display: grid;
+  gap: 9px;
+}
+
+.v3-living-account-panel p,
+.v3-advanced-panel p {
+  margin: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.v3-living-account-mode {
+  color: #5e6f63;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.v3-living-account-panel button,
+.v3-advanced-panel button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid #a8be9a;
+  border-radius: 7px;
+  color: #365b43;
+  background: #edf3e7;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.v3-living-account-panel button:disabled,
+.v3-advanced-panel button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.v3-start-run-menu {
+  padding-top: 8px;
+  border-top: 1px solid #d9e0d2;
+}
+
+.v3-start-run-menu > summary,
+.v3-abandon-section > summary {
+  padding: 5px 0;
+  color: #365b43;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.v3-start-run-menu .v3-run-controls,
+.v3-advanced-panel .v3-status-panel,
+.v3-advanced-panel .v3-verified-runtime,
+.v3-advanced-panel .v3-command-queue {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.v3-living-error,
+.v3-living-flow--failed {
+  color: #8d2e2e;
+}
+
+.v3-living-flow--confirmed {
+  color: #245d35;
+}
+
+.v3-advanced-panel {
+  display: grid;
+  gap: 10px;
+  width: min(440px, calc(100vw - 24px));
+}
+
+.v3-advanced-panel .v3-verified-runtime {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.v3-advanced-panel .v3-verified-runtime > .living-notice {
+  margin: 0;
+  padding: 8px;
+  font-size: 11px;
+}
+
+.v3-advanced-panel .v3-command-queue {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.v3-abandon-section {
+  padding-top: 8px;
+  border-top: 1px solid #d9e0d2;
+}
+
+@media (max-width: 700px) {
+  .v3-living-tools {
+    gap: 4px;
+  }
+
+  .v3-living-account > summary,
+  .v3-advanced-activity > summary {
+    min-height: 30px;
+    padding-inline: 7px;
+    font-size: 10px;
+  }
+
+  .v3-living-account-panel,
+  .v3-advanced-panel {
+    position: fixed;
+    top: 64px;
+    right: 8px;
+    width: min(380px, calc(100vw - 16px));
+    max-height: calc(100dvh - 76px);
+  }
 }
 
 .living-scene .island-heart:disabled {

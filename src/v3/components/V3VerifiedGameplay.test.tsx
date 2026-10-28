@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createCanonicalRun,
@@ -26,6 +26,7 @@ const retryCommandMock = vi.fn();
 const clearCompletedMock = vi.fn();
 const snapshotChangeMock = vi.fn();
 const heartActionReadyMock = vi.fn();
+const actionHandlersReadyMock = vi.fn();
 
 function canonicalState(): CanonicalRunState {
   const base = createCanonicalRun({
@@ -85,6 +86,7 @@ function renderVerified(commands: V3CommandQueueState['commands'] = []) {
       sessionToken={token}
       onSnapshotChange={snapshotChangeMock}
       onHeartActionReady={heartActionReadyMock}
+      onActionHandlersReady={actionHandlersReadyMock}
     />,
   );
 }
@@ -118,6 +120,12 @@ describe('verified Living Island adapter', () => {
         productionPerSecond: '0',
         visualHabitatLevelCount: 0,
         scoreTier: 0,
+        rulesVersion: 1,
+        habitats: expect.arrayContaining([
+          expect.objectContaining({ id: 'water', level: 0, nextCost: '10' }),
+          expect.objectContaining({ id: 'grass', level: 0 }),
+          expect.objectContaining({ id: 'forest', level: 0 }),
+        ]),
       }),
     );
     expect(recoverStateMock).toHaveBeenCalledOnce();
@@ -129,7 +137,7 @@ describe('verified Living Island adapter', () => {
     await waitFor(() => expect(submitCommandMock).toHaveBeenCalledWith({ type: 'heart-click' }));
   });
 
-  it('routes habitat purchases through the verifier and displays canonical habitat levels', async () => {
+  it('publishes V1 habitat state and routes purchases through verified commands', async () => {
     const serverState = { ...canonicalState(), habitats: { water: 2, grass: 1, forest: 0 } };
     recoverStateMock.mockResolvedValueOnce({
       cursor: { runId, sequence: 0, rulesVersion: 1 },
@@ -138,23 +146,37 @@ describe('verified Living Island adapter', () => {
       wallet,
     });
     renderVerified();
-    expect(await screen.findByTestId('verified-habitat-water')).toHaveTextContent('2');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Buy 1 verified Water' }));
+    await waitFor(() => expect(actionHandlersReadyMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      pending: false,
+      buyHabitat: expect.any(Function),
+      buyProductionUpgrade: expect.any(Function),
+    })));
+    const handlers = actionHandlersReadyMock.mock.calls.at(-1)?.[0];
+    expect(snapshotChangeMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      habitats: expect.arrayContaining([expect.objectContaining({ id: 'water', level: 2 })]),
+    }));
+    handlers.buyHabitat('water', 1);
     await waitFor(() => expect(submitCommandMock).toHaveBeenCalledWith({
       type: 'buy-habitat', habitat: 'water', quantity: 1,
     }));
   });
 
-  it('keeps V1 runs on their original three habitats', async () => {
+  it('keeps V1 run state on its original three habitats with no V2 upgrades', async () => {
     renderVerified();
-    expect(await screen.findByRole('region', { name: 'Water habitat' })).toBeTruthy();
-    expect(screen.getAllByLabelText(/habitat$/)).toHaveLength(3);
-    expect(screen.queryByRole('region', { name: 'Mountain habitat' })).toBeNull();
-    expect(screen.queryByText('Production upgrades')).toBeNull();
+    await waitFor(() => expect(snapshotChangeMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      rulesVersion: 1,
+      habitats: expect.arrayContaining([
+        expect.objectContaining({ id: 'water', productionUpgrades: [] }),
+        expect.objectContaining({ id: 'grass', productionUpgrades: [] }),
+        expect.objectContaining({ id: 'forest', productionUpgrades: [] }),
+      ]),
+    })));
+    const snapshot = snapshotChangeMock.mock.calls.at(-1)?.[0];
+    expect(snapshot.habitats).toHaveLength(3);
+    expect(snapshot.habitats.map((habitat: { id: string }) => habitat.id)).not.toContain('mountain');
   });
 
-  it('renders all six V2 habitats and shows milestone availability by level and affordability', async () => {
+  it('publishes all six V2 habitats and milestone availability by level and affordability', async () => {
     const base = canonicalStateV2();
     const state = {
       ...base,
@@ -172,15 +194,25 @@ describe('verified Living Island adapter', () => {
     });
     renderVerified();
 
-    expect(await screen.findByRole('region', { name: 'Mountain habitat' })).toBeTruthy();
-    expect(screen.getAllByLabelText(/habitat$/)).toHaveLength(6);
-    expect(screen.getAllByText('Locked · requires level 50')).toHaveLength(6);
-    expect(screen.getByText('Purchased')).toBeTruthy();
-    expect(screen.getByText('Available')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Buy Water level 25 production upgrade' })).toBeEnabled();
+    await waitFor(() => expect(snapshotChangeMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      rulesVersion: 2,
+      habitats: expect.arrayContaining([
+        expect.objectContaining({ id: 'mountain' }),
+        expect.objectContaining({ id: 'crystal-cavern' }),
+        expect.objectContaining({ id: 'ancient-grove' }),
+        expect.objectContaining({
+          id: 'water', level: 25, purchasedUpgradeCount: 1,
+          productionUpgrades: expect.arrayContaining([
+            expect.objectContaining({ milestone: 10, purchased: true }),
+            expect.objectContaining({ milestone: 25, available: true }),
+          ]),
+        }),
+      ]),
+    })));
+    expect(snapshotChangeMock.mock.calls.at(-1)?.[0].habitats).toHaveLength(6);
   });
 
-  it('submits the canonical V2 milestone command from the available upgrade control', async () => {
+  it('publishes a V2 milestone action that submits the canonical command', async () => {
     const state = canonicalStateV2();
     recoverStateMock.mockResolvedValueOnce({
       cursor: { runId, sequence: 0, rulesVersion: 2 },
@@ -190,7 +222,10 @@ describe('verified Living Island adapter', () => {
     });
     renderVerified();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Buy Water level 10 production upgrade' }));
+    await waitFor(() => expect(actionHandlersReadyMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      buyProductionUpgrade: expect.any(Function),
+    })));
+    actionHandlersReadyMock.mock.calls.at(-1)?.[0].buyProductionUpgrade('water');
     await waitFor(() => expect(submitCommandMock).toHaveBeenCalledWith({
       type: 'buy-habitat-production-upgrade',
       habitat: 'water',
@@ -198,7 +233,7 @@ describe('verified Living Island adapter', () => {
     }));
   });
 
-  it('shows a rejected purchase without changing verifier-accepted Nature or habitat counts', async () => {
+  it('retains verifier-accepted state after a rejected purchase', async () => {
     const failed = {
       commandId: 'rejected-1',
       payload: { type: 'buy-habitat', habitat: 'water', quantity: 1 } as const,
@@ -211,7 +246,10 @@ describe('verified Living Island adapter', () => {
     await waitFor(() =>
       expect(snapshotChangeMock).toHaveBeenLastCalledWith(expect.objectContaining({ nature: '100' })),
     );
-    expect(screen.getByTestId('verified-habitat-water')).toHaveTextContent('0');
     expect(screen.getByText('Not enough Nature.')).toBeTruthy();
+    expect(snapshotChangeMock.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({
+      nature: '100',
+      habitats: expect.arrayContaining([expect.objectContaining({ id: 'water', level: 0 })]),
+    }));
   });
 });

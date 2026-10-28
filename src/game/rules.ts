@@ -90,7 +90,10 @@ export function isHeartComplete(cells: Cell[], unlockedThrough: number): boolean
 export function createGameState(seed = 'worldseed-demo-001', demo = true): GameState {
   return {
     island: generateIsland(seed),
-    inventory: demo ? { water: 20, grass: 20, forest: 20 } : { water: 1, grass: 1, forest: 0 },
+    // Guest mode follows the same small resource loop as a wallet island. The
+    // guaranteed witness route and milestone rewards keep the puzzle solvable,
+    // while gathering lets players recover from a mistaken placement.
+    inventory: { water: 1, grass: 1, forest: 0 },
     unlockedThrough: 0,
     claimedRegions: ['clearing'],
     actionCount: 0,
@@ -140,14 +143,14 @@ export function applyAction(
     if (!cell.placeable) return { state, events, error: 'That tile cannot hold a habitat.' };
     if (cell.habitat)
       return { state, events, error: 'Remove the existing habitat before placing another.' };
-    if (!state.demo && inventory[action.habitat] <= 0)
+    if (inventory[action.habitat] <= 0)
       return { state, events, error: `No ${action.habitat} left in your pouch.` };
     cells[action.index] = { ...cells[action.index]!, habitat: action.habitat };
-    if (!state.demo) inventory[action.habitat] -= 1;
+    inventory[action.habitat] -= 1;
     events.push({ kind: 'placed', message: `${capitalize(action.habitat)} placed.` });
   } else {
     if (!cell.habitat) return { state, events, error: 'There is no habitat to gather here.' };
-    if (!state.demo) inventory[cell.habitat] += 1;
+    inventory[cell.habitat] += 1;
     cells[action.index] = { ...cells[action.index]!, habitat: null };
     events.push({
       kind: 'removed',
@@ -163,7 +166,7 @@ export function applyAction(
     if (healthyCount(cells, unlockedThrough) < nextRegion.unlockAt) break;
     unlockedThrough = nextIndex;
     claimedRegions.push(nextRegion.id);
-    if (!state.demo) inventory = addReward(inventory, nextRegion.id);
+    inventory = addReward(inventory, nextRegion.id);
     events.push({
       kind: 'region-unlocked',
       region: nextRegion.id,

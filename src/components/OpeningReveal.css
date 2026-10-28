@@ -14,22 +14,13 @@
   will-change: transform;
 }
 
-.opening-reveal-brand.living-brand {
-  gap: 16px;
-  color: var(--living-ink);
-  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
-  font-size: clamp(34px, 6vw, 54px);
-  font-weight: 800;
+.opening-reveal-logo {
+  display: block;
+  width: min(82vw, 780px);
+  max-height: 34vh;
+  object-fit: contain;
+  image-rendering: pixelated;
   animation: opening-logo-appear 380ms ease-out 80ms both;
-}
-
-.opening-reveal .living-brand-seed {
-  width: clamp(42px, 6vw, 56px);
-  height: clamp(42px, 6vw, 56px);
-  border-color: #a8be9a;
-  color: #f7f5ec;
-  background: #a8be9a;
-  font-size: clamp(20px, 3vw, 27px);
 }
 
 @keyframes opening-logo-appear {

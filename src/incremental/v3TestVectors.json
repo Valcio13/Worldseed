@@ -1,0 +1,53 @@
+{
+  "rulesVersion": 1,
+  "natureAtomsPerNature": "1000000000000",
+  "score": [
+    { "earnedNatureAtoms": "0", "scoreTier": 0 },
+    { "earnedNatureAtoms": "999999999999", "scoreTier": 0 },
+    { "earnedNatureAtoms": "1000000000000", "scoreTier": 0 },
+    { "earnedNatureAtoms": "1250000000000", "scoreTier": 1 },
+    { "earnedNatureAtoms": "1500000000000", "scoreTier": 2 },
+    { "earnedNatureAtoms": "2000000000000", "scoreTier": 3 },
+    { "earnedNatureAtoms": "3000000000000", "scoreTier": 4 },
+    { "earnedNatureAtoms": "5000000000000", "scoreTier": 5 },
+    { "earnedNatureAtoms": "7500000000000", "scoreTier": 6 },
+    { "earnedNatureAtoms": "1000000000000000000000000", "scoreTier": 84 },
+    { "earnedNatureAtomsPowerOfTen": 9375, "scoreTier": 65535 }
+  ],
+  "habitatCost": [
+    { "habitat": "water", "initialLevel": 0, "quantity": 1, "costAtoms": "10000000000000" },
+    { "habitat": "water", "initialLevel": 0, "quantity": 2, "costAtoms": "21500000000000" },
+    { "habitat": "water", "initialLevel": 0, "quantity": 3, "costAtoms": "34725000000000" }
+  ],
+  "rounding": {
+    "costCeil": {
+      "habitat": "water",
+      "efficiencyLevel": 100,
+      "quantity": 1,
+      "costAtoms": "265613990"
+    },
+    "productionFloor": {
+      "growthLevel": 100,
+      "habitats": { "water": 1, "grass": 1, "forest": 0 },
+      "durationMs": 1,
+      "rateAtomsPerSecond": "625087810460393066575954721752",
+      "earnedNatureAtoms": "625087810460393066575954721",
+      "remainderMilliAtoms": "752"
+    }
+  },
+  "ppUpgradeCost": { "initialLevel": 4, "quantity": 3, "cost": "18" },
+  "seasonBoundaries": [
+    { "timestampMs": 345600000, "seasonId": 0 },
+    { "timestampMs": 950399999, "seasonId": 0 },
+    { "timestampMs": 950400000, "seasonId": 1 }
+  ],
+  "upgradeCommitment": {
+    "abiType": "tuple[] (uint8 upgradeId,uint16 quantity)",
+    "choices": [
+      { "upgradeId": 0, "quantity": 2 },
+      { "upgradeId": 2, "quantity": 1 }
+    ],
+    "encoded": "0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001",
+    "keccak256": "0x75b7786712d64e8aade0a7537c33b7165b0399fce9f3ec25fbadcf0cba93efc4"
+  }
+}

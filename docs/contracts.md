@@ -16,12 +16,12 @@ Four one-time region unlocks add one point each to the current World Tree week. 
 - No external transaction provenance is attested in this MVP. The direct seed is user-selected and is not a trustless proof of another chain's transaction.
 - The snapshot hash is emitted with completion for later indexing; contract predicates, rather than that hash, determine completion.
 
-## Puzzle and economy foundation
+## Temporarily retained legacy puzzle contract interface
 
 `startPuzzleRound(mode)` accepts modes 0–2, allows one active round per wallet, spends one of five stamina (one regenerates each 30 minutes), and initializes the board from a chain-derived seed plus the wallet round nonce. `savePuzzleMoves(expectedMoves, directions, cashOut)` accepts at most 20 direction codes per transaction and replays each move and spawn in Solidity. Invalid no-op directions do not advance the move cursor. A requested cashout requires at least 20 valid moves; natural game-over or the 200-valid-move ceiling settles automatically. Contract-computed integer Gold is credited once. `buyHabitat` atomically debits the non-transferable Gold balance and credits Water, Grass, or Forest inventory. These mechanics have passed local contract tests and direct Hemi Sepolia transactions; a clean connected-browser wallet journey is still outstanding.
 
-The shared TypeScript engine and Solidity replay use identical board orientation, merge rules, xorshift32 RNG, and mode spawn weights. Gold factors, mode labels, stamina cadence, and shop prices are initial balancing values, not testnet-validated economy parameters.
+The shared TypeScript engine and Solidity replay use identical board orientation, merge rules, xorshift32 RNG, and mode spawn weights. This system is retained in contract/source code only; it is not linked from the current player-facing app or weekly incremental progression. Its parameters are not part of the active game roadmap.
 
 ## Remaining verification
 
-Local Hardhat tests cover one-time starter claims, stale cursors, locked cells, resource conflicts, the shared v1 completion witness, the six-point contribution, and puzzle checkpoint replay, stamina, and settlement. Contract `WorldseedGame` is deployed at `0x133B0fDbaC7D6535C68Be5945d15C328F3d371E4` on Hemi Sepolia (chain ID `743111`) and has an exact creation/runtime match on Sourcify. Direct test transactions have measured actual network gas, but these do not replace testing with a separate connected browser wallet. See [`deployment.md`](deployment.md) for the QA checklist and measured 2048 round total.
+Local Hardhat tests cover one-time starter claims, stale cursors, locked cells, resource conflicts, the shared v1 completion witness, the six-point contribution, and the retained legacy puzzle contract functions. Contract `WorldseedGame` is deployed at `0x133B0fDbaC7D6535C68Be5945d15C328F3d371E4` on Hemi Sepolia (chain ID `743111`) and has an exact creation/runtime match on Sourcify. These legacy functions are not exposed by the current game UI. See [`deployment.md`](deployment.md) for the remaining island and wallet QA checklist.

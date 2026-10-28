@@ -1,3 +1,9 @@
+.audio-settings-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .audio-settings {
   position: relative;
   color: #3d6245;

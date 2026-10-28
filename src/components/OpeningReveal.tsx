@@ -24,12 +24,11 @@ export function OpeningReveal() {
 
   return (
     <div className="opening-reveal" data-testid="opening-reveal" aria-hidden="true" inert>
-      <span className="opening-reveal-brand living-brand">
-        <span className="living-brand-seed" aria-hidden="true">
-          ✦
-        </span>
-        <span>worldseed</span>
-      </span>
+      <img
+        className="opening-reveal-logo"
+        src="/assets/branding/worldseed-logo.png"
+        alt="Worldseed"
+      />
     </div>
   );
 }

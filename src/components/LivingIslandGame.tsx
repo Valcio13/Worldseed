@@ -24,8 +24,13 @@ import { transactionFailureMessage } from '../blockchain/transactions';
 import { isV3IdleIntegrationEnabled } from '../integration/featureFlags';
 import { LivingIslandScreen, type LivingIslandMode } from './LivingIslandScreen';
 import { AudioSettings } from './AudioSettings';
-import { V3IslandProgression } from './V3IntegrationShell';
+import {
+  V3IslandProgression,
+  type V3LivingProfile,
+  type V3LivingSettlementControls,
+} from './V3IntegrationShell';
 import type { V3IslandSnapshot } from '../v3/components/V3VerifiedGameplay';
+import type { V3IslandActionHandlers } from '../v3/components/V3VerifiedGameplay';
 import './LivingIsland.css';
 import { islandGrowthStage } from './islandGrowthStage';
 
@@ -41,17 +46,38 @@ export function LivingIslandGame() {
   const [loaded, setLoaded] = useState(false);
   const [saveReady, setSaveReady] = useState(false);
   const [saveLabel, setSaveLabel] = useState('Loading save');
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState<{
+    id: number;
+    message: string;
+    important: boolean;
+  } | null>(null);
+  const noticeIdRef = useRef(0);
   const [saveDecision, setSaveDecision] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [mode, setMode] = useState<LivingIslandMode>('guest');
   const [verifiedIsland, setVerifiedIsland] = useState<V3IslandSnapshot | null>(null);
   const [verifiedHeartAction, setVerifiedHeartAction] = useState<(() => void) | null>(null);
+  const [verifiedActions, setVerifiedActions] = useState<V3IslandActionHandlers | null>(null);
+  const [verifiedProfile, setVerifiedProfile] = useState<V3LivingProfile | null>(null);
+  const [verifiedSettlement, setVerifiedSettlement] = useState<V3LivingSettlementControls | null>(null);
   const restorationRef = useRef(createGameState('guest-living-island'));
   const legacyRestorationRef = useRef<ReturnType<typeof createGameState> | undefined>(undefined);
   const lastCheckpointRef = useRef<number | null>(null);
   const nextSeasonStart = seasonStartAt(economy.seasonId + 1);
   const verifiedModeEnabled = isV3IdleIntegrationEnabled();
+
+  function showNotice(message: string, important = false) {
+    setNotice({ id: ++noticeIdRef.current, message, important });
+  }
+
+  useEffect(() => {
+    if (!notice) return;
+    const timeout = window.setTimeout(
+      () => setNotice((current) => (current?.id === notice.id ? null : current)),
+      notice.important ? 15_000 : 5_000,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
 
   useEffect(() => {
     let alive = true;
@@ -73,9 +99,9 @@ export function LivingIslandGame() {
           setEconomy(restored.state);
           lastCheckpointRef.current = now;
           if (restored.seasonChanged)
-            setNotice('A new weekly season has begun. Your island is ready to grow again.');
+            showNotice('A new weekly season has begun. Your island is ready to grow again.');
           else if (restored.secondsApplied > 0)
-            setNotice(`Welcome back. Your island grew while you were away.`);
+            showNotice('Welcome back. Your island grew while you were away.');
           setSaveReady(true);
         } else if (result.kind === 'legacy') {
           // Keep the old restoration save attached for compatibility while beginning the incremental game.
@@ -91,8 +117,9 @@ export function LivingIslandGame() {
         if (alive) {
           setSaveError(true);
           setSaveLabel('Local save unavailable');
-          setNotice(
+          showNotice(
             'Guest play is available for this session, but local saving could not be opened.',
+            true,
           );
         }
       })
@@ -127,7 +154,7 @@ export function LivingIslandGame() {
         lastCheckpointRef.current = now;
         restorationRef.current = createGameState(`season-${season}`);
         setEconomy((previous) => resetForNewSeason(previous, season));
-        setNotice('A new weekly season has begun. Your island is ready to grow again.');
+        showNotice('A new weekly season has begun. Your island is ready to grow again.');
       } else if (season === economy.seasonId) {
         const checkpoint = lastCheckpointRef.current ?? now;
         lastCheckpointRef.current = now;
@@ -148,15 +175,16 @@ export function LivingIslandGame() {
         lastCheckpointRef.current = Date.now();
         restorationRef.current = createGameState(`season-${season}`);
         setEconomy((previous) => resetForNewSeason(previous, season));
-        setNotice('A new weekly season has begun. Your island is ready to grow again.');
+        showNotice('A new weekly season has begun. Your island is ready to grow again.');
       } else
-        setNotice(
+        showNotice(
           'Your device clock is earlier than the active season; this action was not applied.',
+          true,
         );
       return;
     }
     if (result.error) {
-      setNotice(result.error);
+      showNotice(result.error, true);
       return;
     }
     const rebirth = result.events.some((event) => event.kind === 'rebirth');
@@ -171,7 +199,7 @@ export function LivingIslandGame() {
     else if (result.events.some((event) => event.kind === 'upgrade-bought'))
       playIslandSound('upgrade');
     setEconomy(result.state);
-    setNotice(result.events.map((event) => event.message).join(' '));
+    showNotice(result.events.map((event) => event.message).join(' '));
   }
 
   async function keepPlaying() {
@@ -182,9 +210,9 @@ export function LivingIslandGame() {
       setSaveDecision(false);
       setSaveReady(true);
       setSaveError(false);
-      setNotice('A fresh Living Island is ready. The older save was backed up.');
+      showNotice('A fresh Living Island is ready. The older save was backed up.');
     } catch {
-      setNotice('The older save could not be backed up, so it remains untouched.');
+      showNotice('The older save could not be backed up, so it remains untouched.', true);
     }
   }
 
@@ -194,9 +222,9 @@ export function LivingIslandGame() {
         if (chainId !== TARGET_CHAIN_ID) await switchChainAsync({ chainId: TARGET_CHAIN_ID });
         else disconnect();
       } else if (connectors[0]) await connectAsync({ connector: connectors[0] });
-      else setNotice('No browser wallet was found. Guest play does not require a wallet.');
+      else showNotice('No browser wallet was found. Guest play does not require a wallet.');
     } catch (error) {
-      setNotice(transactionFailureMessage(error, 'Wallet request'));
+      showNotice(transactionFailureMessage(error, 'Wallet request'), true);
     }
   }
 
@@ -223,12 +251,40 @@ export function LivingIslandGame() {
     if (nextMode === 'guest') {
       setVerifiedIsland(null);
       setVerifiedHeartAction(null);
+      setVerifiedActions(null);
+      setVerifiedProfile(null);
+      setVerifiedSettlement(null);
     }
     setMode(nextMode);
   }
 
   const acceptVerifiedHeartAction = useCallback((action: (() => void) | null) => {
     setVerifiedHeartAction(() => action);
+  }, []);
+
+  const acceptVerifiedActions = useCallback((next: V3IslandActionHandlers | null) => {
+    setVerifiedActions((previous) => {
+      if (
+        previous?.pending === next?.pending &&
+        previous?.buyHabitat === next?.buyHabitat &&
+        previous?.buyProductionUpgrade === next?.buyProductionUpgrade
+      ) return previous;
+      return next;
+    });
+  }, []);
+
+  const acceptVerifiedProfile = useCallback((next: V3LivingProfile | null) => {
+    setVerifiedProfile((previous) =>
+      JSON.stringify(previous) === JSON.stringify(next) ? previous : next,
+    );
+  }, []);
+
+  const acceptVerifiedSettlement = useCallback((next: V3LivingSettlementControls | null) => {
+    setVerifiedSettlement((previous) => {
+      if (previous?.pending === next?.pending && previous?.canSettle === next?.canSettle)
+        return previous;
+      return next;
+    });
   }, []);
 
   return (
@@ -239,6 +295,9 @@ export function LivingIslandGame() {
         verifiedModeEnabled={verifiedModeEnabled}
         verifiedIsland={verifiedIsland}
         verifiedHeartAction={verifiedHeartAction}
+        verifiedActions={verifiedActions}
+        verifiedProfile={verifiedProfile}
+        verifiedSettlement={verifiedSettlement}
         onModeChange={changeMode}
         nextSeasonStart={nextSeasonStart}
         saveLabel={loaded ? saveLabel : 'Loading save'}
@@ -249,10 +308,15 @@ export function LivingIslandGame() {
             <V3IslandProgression
               onSnapshotChange={setVerifiedIsland}
               onHeartActionReady={acceptVerifiedHeartAction}
+              onActionHandlersReady={acceptVerifiedActions}
+              onProfileChange={acceptVerifiedProfile}
+              onSettlementControlsReady={acceptVerifiedSettlement}
             />
           ) : undefined
         }
-        notice={notice}
+        notice={notice?.message}
+        noticeImportant={notice?.important ?? false}
+        onNoticeDismiss={() => setNotice(null)}
         onHeartClick={() => applyResult(clickIslandHeart(economy))}
         onStateChange={applyResult}
         onRebirth={() => applyResult(performRebirth(economy))}

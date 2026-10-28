@@ -1,9 +1,12 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import { V3RunControls } from '../v3/components/V3RunControls';
 import { V3StatusPanel } from '../v3/components/V3StatusPanel';
 import { V3VerifiedGameplay } from '../v3/components/V3VerifiedGameplay';
-import type { V3IslandSnapshot } from '../v3/components/V3VerifiedGameplay';
+import type {
+  V3IslandActionHandlers,
+  V3IslandSnapshot,
+} from '../v3/components/V3VerifiedGameplay';
 import { useStartRunFlow } from '../v3/hooks/useStartRunFlow';
 import { useV3Auth } from '../v3/hooks/useV3Auth';
 import { useV3Run } from '../v3/hooks/useV3Run';
@@ -12,71 +15,76 @@ import type { V3UpgradeKind } from '../v3/types';
 import { TARGET_CHAIN_ID } from '../blockchain/config';
 import './V3IntegrationShell.css';
 
-interface V3IntegrationShellProps {
-  guestGame: ReactNode;
+export interface V3LivingProfile {
+  activeRun: boolean;
+  runId: string | null;
+  authenticated: boolean;
+  ready: boolean;
+  seasonalPP: string;
+  seasonalCP: string;
+  lifetimeCP: string;
+  lifetimeNature: string;
+  accumulatedScore: string;
+  seasonalAccumulatedScore: string;
+  seasonalHighScoreTier: number;
+  nextCpMilestoneTier: number | null;
+  rebirthThresholdTier: number;
+  seasonRebirths: number;
+  upgradeLevels: Record<V3UpgradeKind, number>;
+  wallet: string | null;
+  error: string | null;
 }
 
-/** Optional integration entry point. Guest gameplay remains the primary playable experience. */
-export function V3IntegrationShell({ guestGame }: V3IntegrationShellProps) {
-  const [view, setView] = useState<'guest' | 'verified'>('guest');
-
-  return (
-    <div className="v3-integration-shell">
-      <nav className="v3-integration-nav" aria-label="Worldseed game mode">
-        <button type="button" aria-pressed={view === 'guest'} onClick={() => setView('guest')}>
-          Guest game
-        </button>
-        <button
-          type="button"
-          aria-pressed={view === 'verified'}
-          onClick={() => setView('verified')}
-        >
-          Verified progression
-        </button>
-      </nav>
-
-      <div className="v3-integration-guest" hidden={view !== 'guest'}>
-        {guestGame}
-      </div>
-      {view === 'verified' && <VerifiedProgression onReturnToGuest={() => setView('guest')} />}
-    </div>
-  );
+export interface V3LivingSettlementControls {
+  pending: boolean;
+  canSettle: boolean;
+  recordPoints: () => void;
+  rebirth: () => void;
 }
 
-/** Verified wallet flow embedded alongside the guest island, without replacing its screen. */
+/** Verified account, run, and activity controls embedded in the Living Island header. */
 export function V3IslandProgression({
   onSnapshotChange,
   onHeartActionReady,
+  onActionHandlersReady,
+  onProfileChange,
+  onSettlementControlsReady,
 }: {
   onSnapshotChange: (snapshot: V3IslandSnapshot | null) => void;
   onHeartActionReady: (action: (() => void) | null) => void;
+  onActionHandlersReady: (handlers: V3IslandActionHandlers | null) => void;
+  onProfileChange: (profile: V3LivingProfile | null) => void;
+  onSettlementControlsReady: (controls: V3LivingSettlementControls | null) => void;
 }) {
-  return (
-    <details className="v3-island-mode" open>
-      <summary>Verified mode · Hemi Sepolia</summary>
-      <VerifiedProgression
-        compact
-        onSnapshotChange={onSnapshotChange}
-        onHeartActionReady={onHeartActionReady}
-      />
-    </details>
-  );
+  return <VerifiedProgression
+    onSnapshotChange={onSnapshotChange}
+    onHeartActionReady={onHeartActionReady}
+    onActionHandlersReady={onActionHandlersReady}
+    onProfileChange={onProfileChange}
+    onSettlementControlsReady={onSettlementControlsReady}
+  />;
 }
 
 function VerifiedProgression({
-  onReturnToGuest,
-  compact = false,
   onSnapshotChange,
   onHeartActionReady,
+  onActionHandlersReady,
+  onProfileChange,
+  onSettlementControlsReady,
 }: {
-  onReturnToGuest?: () => void;
-  compact?: boolean;
-  onSnapshotChange?: (snapshot: V3IslandSnapshot | null) => void;
-  onHeartActionReady?: (action: (() => void) | null) => void;
+  onSnapshotChange: (snapshot: V3IslandSnapshot | null) => void;
+  onHeartActionReady: (action: (() => void) | null) => void;
+  onActionHandlersReady: (handlers: V3IslandActionHandlers | null) => void;
+  onProfileChange: (profile: V3LivingProfile | null) => void;
+  onSettlementControlsReady: (controls: V3LivingSettlementControls | null) => void;
 }) {
   const runState = useV3Run();
   const auth = useV3Auth();
   const settlement = useV3Settlement(auth.isAuthenticated ? auth.sessionToken : null);
+  const settlementRef = useRef(settlement);
+  const runStateRef = useRef(runState);
+  const authRef = useRef(auth);
+  const startFlowRef = useRef<ReturnType<typeof useStartRunFlow> | null>(null);
   const { connectAsync, connectors, isPending: connecting } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChainAsync, isPending: switching } = useSwitchChain();
@@ -97,6 +105,12 @@ function VerifiedProgression({
       return hash;
     },
   });
+  useEffect(() => {
+    settlementRef.current = settlement;
+    runStateRef.current = runState;
+    authRef.current = auth;
+    startFlowRef.current = startFlow;
+  }, [auth, runState, settlement, startFlow]);
   const authenticationRunId = activeVerifiedRunId ?? startFlow.nextRunId?.toString();
   const lastStartChoices = useRef<Array<{ upgradeId: V3UpgradeKind; quantity: number }>>([]);
   // The current hook's derived access flag can be undefined before wallet/config state settles.
@@ -163,26 +177,96 @@ function VerifiedProgression({
     hasActiveRun && auth.isAuthenticated && settlement.canSettle && !runState.loading,
   );
 
-  async function recordRunPoints() {
+  const recordRunPoints = useCallback(async () => {
     try {
-      await settlement.recordPoints();
-      await runState.refetch();
+      await settlementRef.current.recordPoints();
+      await runStateRef.current.refetch();
     } catch {
       // The settlement hook exposes the failure state for the UI below.
     }
-  }
+  }, []);
 
-  async function rebirthRun() {
+  const rebirthRun = useCallback(async () => {
     try {
-      await settlement.rebirth();
+      await settlementRef.current.rebirth();
       // A confirmed rebirth closes this run and makes the next session bind to
       // counter + 1. End the old run-bound verifier session before refreshing.
-      auth.logout();
-      await Promise.allSettled([runState.refetch(), startFlow.refreshNextRunId()]);
+      authRef.current.logout();
+      const flow = startFlowRef.current;
+      await Promise.allSettled([
+        runStateRef.current.refetch(),
+        flow?.refreshNextRunId() ?? Promise.resolve(),
+      ]);
     } catch {
       // The settlement hook exposes the failure/uncertain state for recovery.
     }
-  }
+  }, []);
+
+  const playerProfile = useMemo<V3LivingProfile>(() => ({
+    activeRun: hasActiveRun,
+    runId: hasActiveRun ? runState.runId.toString() : null,
+    authenticated: auth.isAuthenticated,
+    ready: Boolean(runState.canAccessV3 && !runState.loading),
+    seasonalPP: runState.seasonalPP.toString(),
+    seasonalCP: runState.seasonalCP.toString(),
+    lifetimeCP: runState.lifetimeCP.toString(),
+    lifetimeNature: runState.lifetimeNatureCollectedAtoms.toString(),
+    accumulatedScore: runState.totalAccumulatedRebirthScore.toString(),
+    seasonalAccumulatedScore: runState.seasonalAccumulatedRebirthScore.toString(),
+    seasonalHighScoreTier: runState.seasonalHighScoreTier,
+    nextCpMilestoneTier: runState.nextCpMilestoneTier,
+    rebirthThresholdTier: runState.rebirthThresholdTier,
+    seasonRebirths: runState.seasonRebirths,
+    upgradeLevels: {
+      growth: runState.upgradeLevels.growth,
+      efficiency: runState.upgradeLevels.efficiency,
+      awakening: runState.upgradeLevels.awakening,
+      rebirth: runState.upgradeLevels.rebirth,
+    },
+    wallet: runState.wallet,
+    error: walletError ?? runState.error ?? auth.error ?? null,
+  }), [
+    auth.error,
+    auth.isAuthenticated,
+    hasActiveRun,
+    runState.canAccessV3,
+    runState.error,
+    runState.lifetimeCP,
+    runState.lifetimeNatureCollectedAtoms,
+    runState.loading,
+    runState.nextCpMilestoneTier,
+    runState.rebirthThresholdTier,
+    runState.runId,
+    runState.seasonalAccumulatedRebirthScore,
+    runState.seasonalCP,
+    runState.seasonalHighScoreTier,
+    runState.seasonalPP,
+    runState.seasonRebirths,
+    runState.totalAccumulatedRebirthScore,
+    runState.upgradeLevels.awakening,
+    runState.upgradeLevels.efficiency,
+    runState.upgradeLevels.growth,
+    runState.upgradeLevels.rebirth,
+    runState.wallet,
+    walletError,
+  ]);
+
+  const settlementControls = useMemo<V3LivingSettlementControls>(() => ({
+    pending: transactionState === 'pending',
+    canSettle: canSettleRun,
+    recordPoints: () => void recordRunPoints(),
+    rebirth: () => void rebirthRun(),
+  }), [canSettleRun, recordRunPoints, rebirthRun, transactionState]);
+
+  useEffect(() => onProfileChange(playerProfile), [onProfileChange, playerProfile]);
+  useEffect(() => onSettlementControlsReady(settlementControls), [onSettlementControlsReady, settlementControls]);
+  useEffect(() => () => {
+    onProfileChange(null);
+    onSettlementControlsReady(null);
+    onActionHandlersReady(null);
+    onHeartActionReady(null);
+    onSnapshotChange(null);
+  }, [onActionHandlersReady, onHeartActionReady, onProfileChange, onSettlementControlsReady, onSnapshotChange]);
 
   const flowStatus = startFlow.state.status;
   const flowMessage =
@@ -200,163 +284,121 @@ function VerifiedProgression({
                 ? (startFlow.state.error ?? 'Start Run failed.')
                 : null;
 
+  const disconnectLabel = !runState.wallet
+    ? 'Connect wallet'
+    : !runState.isCorrectChain
+      ? 'Switch to Hemi Sepolia'
+      : `Disconnect ${runState.wallet.slice(0, 6)}…${runState.wallet.slice(-4)}`;
+
   return (
-    <section className={`v3-integration-page${compact ? ' v3-integration-page--embedded' : ''}`}>
-      <header className="v3-integration-heading">
-        <div>
-          <p>WORLDSEED V3</p>
-          <h1>Verified progression</h1>
-        </div>
-        {!compact && (
-          <div className="v3-integration-heading-actions">
-            <button type="button" onClick={() => void handleWalletAction()} disabled={walletBusy}>
-              {connecting
-                ? 'Connecting wallet…'
-                : switching
-                  ? 'Switching network…'
-                  : !runState.wallet
-                    ? 'Connect wallet'
-                    : !runState.isCorrectChain
-                      ? 'Switch to Hemi Sepolia'
-                      : `Disconnect ${runState.wallet.slice(0, 6)}…${runState.wallet.slice(-4)}`}
+    <div className="v3-living-tools">
+      <details className="v3-living-account">
+        <summary>
+          {runState.wallet ? `${runState.wallet.slice(0, 6)}…${runState.wallet.slice(-4)}` : 'Verified account'}
+          <span>{auth.isAuthenticated ? ' · ready' : ''}</span>
+        </summary>
+        <div className="v3-living-account-panel">
+          <p className="v3-living-account-mode">Verified · Hemi Sepolia</p>
+          <button type="button" onClick={() => void handleWalletAction()} disabled={walletBusy}>
+            {connecting ? 'Connecting…' : switching ? 'Switching…' : disconnectLabel}
+          </button>
+          {runState.wallet && runState.isCorrectChain && (
+            <>
+              <p aria-live="polite">
+                {auth.isAuthenticated
+                  ? 'Wallet authenticated for this run.'
+                  : !auth.isConfigured
+                    ? 'Verifier is not configured.'
+                    : authenticationRunId === undefined
+                      ? 'Waiting for the next run ID.'
+                      : isAuthenticating
+                        ? 'Confirm the sign-in message in your wallet.'
+                        : auth.error ?? 'Authenticate to load and play a verified run.'}
+              </p>
+              {auth.isAuthenticated ? (
+                <button type="button" onClick={auth.logout}>End session</button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void authenticateWallet()}
+                  disabled={!canAuthenticate || isAuthenticating}
+                >
+                  {isAuthenticating ? 'Authenticating…' : 'Authenticate wallet'}
+                </button>
+              )}
+              {!hasActiveRun && auth.isAuthenticated && (
+                <details className="v3-start-run-menu">
+                  <summary>Start a verified run</summary>
+                  <V3RunControls
+                    runState={statusRunState}
+                    transactionState={transactionState}
+                    onStartRun={startVerifiedRun}
+                  />
+                </details>
+              )}
+            </>
+          )}
+          {(walletError || auth.error) && (
+            <p className="v3-living-error" role="alert">{walletError ?? auth.error}</p>
+          )}
+          {flowMessage && (
+            <p className={`v3-living-flow v3-living-flow--${flowStatus}`} role={flowStatus === 'error' ? 'alert' : 'status'} aria-live="polite">
+              {flowMessage}
+            </p>
+          )}
+          {flowStatus === 'error' && startFlow.canRetry && auth.isAuthenticated && !runState.isStarting && (
+            <button type="button" onClick={() => void startFlow.retry(lastStartChoices.current)}>
+              Retry Start Run
             </button>
-            {onReturnToGuest && (
-              <button type="button" onClick={onReturnToGuest}>
-                Return to guest game
-              </button>
-            )}
-          </div>
-        )}
-      </header>
-      <p className="v3-integration-explanation">
-        Guest play is available without a wallet. Verified progress is separate and requires a
-        connected wallet on Hemi Sepolia. Guest saves are never converted into wallet rewards.
-      </p>
-      <V3StatusPanel runState={statusRunState} onRefetch={() => void runState.refetch()} />
-      <section className="v3-integration-auth" aria-label="Wallet authentication">
-        <div className="v3-integration-section-heading">
-          <h2>Wallet authentication</h2>
-          <strong>{auth.isAuthenticated ? 'Authenticated' : auth.status}</strong>
+          )}
         </div>
-        <p aria-live="polite">
-          {auth.isAuthenticated
-            ? `Wallet ${auth.wallet?.slice(0, 6)}…${auth.wallet?.slice(-4)} is authenticated for this session.`
-            : !auth.isConfigured
-              ? 'V3 is not configured. Set the V3 contract address to enable authentication.'
-              : !auth.wallet
-                ? 'Connect a wallet to authenticate.'
-                : !auth.isCorrectChain
-                  ? 'Switch to Hemi Sepolia before authenticating.'
-                  : authenticationRunId === undefined
-                    ? 'Waiting for the contract to provide the next run ID before signing.'
-                    : auth.status === 'signing'
-                      ? 'Confirm the sign-in message in your wallet. This message does not authorize a transaction.'
-                      : auth.status === 'completing' || auth.status === 'requesting-challenge'
-                        ? 'Completing wallet authentication…'
-                        : (auth.error ??
-                          'Authenticate this wallet before starting a verified run.')}
-        </p>
-        {auth.error && (
-          <p className="v3-integration-error" role="alert">
-            {auth.error}
+      </details>
+
+      <details className="v3-advanced-activity">
+        <summary>Advanced / Activity</summary>
+        <div className="v3-advanced-panel">
+          <V3StatusPanel runState={statusRunState} onRefetch={() => void runState.refetch()} />
+        {settlement.status !== 'idle' && (
+          <p className={`v3-living-flow v3-living-flow--${transactionState}`} role={settlement.status === 'failed' || settlement.status === 'uncertain' ? 'alert' : 'status'} aria-live="polite">
+            {settlement.error ??
+              (settlement.status === 'confirmed'
+                ? `${settlement.action === 'recordPoints' ? 'Record Points' : 'Rebirth'} confirmed${settlement.transactionHash ? ` · ${settlement.transactionHash}` : ''}`
+                : `${settlement.action === 'recordPoints' ? 'Record Points' : 'Rebirth'} ${settlement.status.replaceAll('-', ' ')}…`)}
           </p>
         )}
-        {walletError && (
-          <p className="v3-integration-error" role="alert">
-            {walletError}
-          </p>
-        )}
-        {auth.isAuthenticated ? (
-          <button type="button" onClick={auth.logout} className="v3-integration-action">
-            End wallet session
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void authenticateWallet()}
-            disabled={!canAuthenticate || isAuthenticating}
-            className="v3-integration-action"
-          >
-            {isAuthenticating ? 'Authenticating…' : 'Authenticate wallet'}
-          </button>
-        )}
-      </section>
-
-      {flowMessage && (
-        <p
-          className={`v3-integration-flow-status v3-integration-flow-status--${flowStatus}`}
-          role={flowStatus === 'error' ? 'alert' : 'status'}
-          aria-live="polite"
-        >
-          {flowMessage}
-        </p>
-      )}
-
-      {(!runState.canAccessV3 || auth.isAuthenticated || hasActiveRun) &&
-        (hasActiveRun ? (
-          <>
-            <V3RunControls
-              runState={statusRunState}
-              transactionState={transactionState}
-              onRecordPoints={canSettleRun ? recordRunPoints : undefined}
-              onRebirth={canSettleRun ? rebirthRun : undefined}
-              onAbandonRun={async () => {
+        {hasActiveRun && (
+          <details className="v3-abandon-section">
+            <summary>Abandon this run</summary>
+            <p>Abandoning forfeits this run's Nature and habitat progress.</p>
+            <button
+              type="button"
+              onClick={async () => {
                 await runState.abandonRun(runState.runId);
                 auth.logout();
                 await runState.refetch();
                 await startFlow.refreshNextRunId();
               }}
-            />
-            {settlement.status !== 'idle' && (
-              <p
-                className={`v3-integration-flow-status v3-integration-flow-status--${transactionState}`}
-                role={
-                  settlement.status === 'failed' || settlement.status === 'uncertain'
-                    ? 'alert'
-                    : 'status'
-                }
-                aria-live="polite"
-              >
-                {settlement.error ??
-                  (settlement.status === 'confirmed'
-                    ? `${settlement.action === 'recordPoints' ? 'Record Points' : 'Rebirth'} confirmed${settlement.transactionHash ? ` · ${settlement.transactionHash}` : ''}`
-                    : `${settlement.action === 'recordPoints' ? 'Record Points' : 'Rebirth'} ${settlement.status.replaceAll('-', ' ')}…`)}
-              </p>
-            )}
-            {!auth.isAuthenticated && (
-              <p role="status">Authenticate for this run before recording points or rebirthing.</p>
-            )}
-          </>
-        ) : (
-          <V3RunControls
-            runState={statusRunState}
-            transactionState={transactionState}
-            onStartRun={startVerifiedRun}
-          />
-        ))}
-
-      {hasActiveRun && auth.isAuthenticated && activeVerifiedRunId && auth.sessionToken && (
-        <V3VerifiedGameplay
-          key={activeVerifiedRunId}
-          runId={activeVerifiedRunId}
-          sessionToken={auth.sessionToken}
-          onSnapshotChange={onSnapshotChange}
-          onHeartActionReady={onHeartActionReady}
-        />
-      )}
-
-      {flowStatus === 'error' &&
-        startFlow.canRetry &&
-        auth.isAuthenticated &&
-        !runState.isStarting && (
-          <button
-            type="button"
-            className="v3-integration-action"
-            onClick={() => void startFlow.retry(lastStartChoices.current)}
-          >
-            Retry Start Run
-          </button>
+              disabled={transactionState === 'pending'}
+            >
+              Abandon verified run
+            </button>
+          </details>
         )}
-    </section>
+        {hasActiveRun && auth.isAuthenticated && activeVerifiedRunId && auth.sessionToken && (
+          <V3VerifiedGameplay
+            key={activeVerifiedRunId}
+            runId={activeVerifiedRunId}
+            sessionToken={auth.sessionToken}
+            onSnapshotChange={onSnapshotChange}
+            onHeartActionReady={onHeartActionReady}
+            onActionHandlersReady={onActionHandlersReady}
+          />
+        )}
+        {hasActiveRun && !auth.isAuthenticated && (
+          <p role="status">Authenticate in Verified account to recover this run's state.</p>
+        )}
+        </div>
+      </details>
+    </div>
   );
 }

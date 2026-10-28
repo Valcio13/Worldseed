@@ -5,17 +5,21 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173 --strictPort",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && tsc -p tsconfig.server.json && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "typecheck": "tsc -b --pretty",
+    "typecheck": "tsc -b --pretty && tsc -p tsconfig.server.json --pretty",
+    "typecheck:worker": "tsc -p tsconfig.worker.json --pretty",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run src",
+    "test:worker": "node --import tsx --test scripts/d1VerifierStore.test.ts",
     "test:watch": "vitest",
     "contract:compile": "hardhat compile --build-profile production",
     "contract:test": "hardhat test --build-profile production",
-    "contract:deploy:testnet": "hardhat run scripts/deploy-testnet.ts --network hemiSepolia --build-profile production"
+    "contract:deploy:testnet": "hardhat run scripts/deploy-testnet.ts --network hemiSepolia --build-profile production",
+    "contract:deploy:v3": "hardhat run scripts/deploy-v3.ts --build-profile production",
+    "verifier:dev": "node --env-file=.env.local --import tsx src/incremental/server/localServer.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.2",

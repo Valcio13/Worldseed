@@ -12,7 +12,7 @@ import {
   type EconomyState,
 } from '../incremental/engine';
 import { formatValue, valueFromNumber } from '../incremental/decimal';
-import { LivingIslandScreen } from './LivingIslandScreen';
+import { LivingIslandScreen, type LivingIslandScreenProps } from './LivingIslandScreen';
 import { islandGrowthStage, islandGrowthStageProgress } from './islandGrowthStage';
 import './LivingIsland.css';
 
@@ -23,7 +23,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderScreen(state: EconomyState, onStateChange = vi.fn()) {
+function renderScreen(
+  state: EconomyState,
+  onStateChange = vi.fn(),
+  notificationProps: Partial<
+    Pick<LivingIslandScreenProps, 'notice' | 'noticeImportant' | 'onNoticeDismiss'>
+  > = {},
+) {
   return render(
     <LivingIslandScreen
       state={state}
@@ -32,11 +38,53 @@ function renderScreen(state: EconomyState, onStateChange = vi.fn()) {
       onHeartClick={vi.fn()}
       onStateChange={onStateChange}
       onRebirth={vi.fn()}
+      {...notificationProps}
     />,
   );
 }
 
 describe('Living Island screen', () => {
+  it('shows a compact dismissible toast and marks important notices as alerts', () => {
+    const dismiss = vi.fn();
+    const { container, rerender } = renderScreen(createEconomyState(1), vi.fn(), {
+      notice: 'Welcome back. Your island grew while you were away.',
+      onNoticeDismiss: dismiss,
+    });
+
+    const toast = container.querySelector('.living-notice');
+    expect(toast).toHaveClass('living-notice');
+    expect(toast).toHaveTextContent('Welcome back. Your island grew while you were away.');
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss notification' }));
+    expect(dismiss).toHaveBeenCalledOnce();
+
+    rerender(
+      <LivingIslandScreen
+        state={createEconomyState(1)}
+        nextSeasonStart={Date.UTC(2026, 10, 2)}
+        saveLabel="Saved"
+        onHeartClick={vi.fn()}
+        onStateChange={vi.fn()}
+        onRebirth={vi.fn()}
+        notice="Local saving is unavailable."
+        noticeImportant
+      />,
+    );
+    expect(screen.getByRole('alert')).toHaveClass('living-notice--important');
+  });
+
+  it('uses the official logo as accessible header branding without duplicate wordmark text', () => {
+    const { container } = renderScreen(createEconomyState(1));
+    const brand = screen.getByRole('link', { name: 'Worldseed' });
+
+    expect(brand.querySelector('img')).toHaveAttribute(
+      'src',
+      '/assets/branding/worldseed-logo.png',
+    );
+    expect(brand.querySelector('img')).toHaveAttribute('alt', 'Worldseed');
+    expect(brand).not.toHaveTextContent('worldseed');
+    expect(container.querySelector('.living-brand-seed')).not.toBeInTheDocument();
+  });
+
   it('keeps one island and one ordered control panel across desktop and mobile layouts', () => {
     const { container } = renderScreen(createEconomyState(1));
     const layout = container.querySelector<HTMLElement>('.living-desktop-layout');
@@ -101,6 +149,8 @@ describe('Living Island screen', () => {
       productionPerSecond: '12',
       visualHabitatLevelCount: 5,
       scoreTier: 35,
+      rulesVersion: 1,
+      habitats: [],
     };
     render(
       <LivingIslandScreen
@@ -125,8 +175,8 @@ describe('Living Island screen', () => {
     expect(screen.getByRole('region', { name: 'Verified Living Island, growing stage' })).toHaveClass(
       'living-scene--growing',
     );
-    expect(screen.queryByRole('heading', { name: 'Habitat shop' })).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'Rebirth' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Habitat shop' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Rebirth' })).toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Click the verified Island Heart to collect 1 Nature' }),
@@ -136,6 +186,44 @@ describe('Living Island screen', () => {
     expect(screen.queryByText('+1 Nature')).toBeNull();
     expect(screen.getByRole('button', { name: 'Guest' })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('button', { name: 'Verified' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('routes verified habitat purchases to V3 and never touches the guest economy handler', () => {
+    const onStateChange = vi.fn();
+    const buyHabitat = vi.fn();
+    render(
+      <LivingIslandScreen
+        state={createEconomyState(1)}
+        mode="verified"
+        verifiedIsland={{
+          nature: '456',
+          earnedNature: '600',
+          productionPerSecond: '12',
+          visualHabitatLevelCount: 1,
+          scoreTier: 1,
+          rulesVersion: 1,
+          habitats: [{
+            id: 'water', level: 1, nextCost: '10', canBuyOne: true,
+            maxAffordable: 2, purchasedUpgradeCount: 0, productionUpgrades: [],
+          }],
+        }}
+        verifiedActions={{
+          pending: false,
+          buyHabitat,
+          buyProductionUpgrade: vi.fn(),
+        }}
+        nextSeasonStart={Date.UTC(2026, 10, 2)}
+        saveLabel="Saved"
+        onHeartClick={vi.fn()}
+        onStateChange={onStateChange}
+        onRebirth={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Buy 1 verified Water' }));
+    expect(buyHabitat).toHaveBeenCalledWith('water', 1);
+    expect(onStateChange).not.toHaveBeenCalled();
+    expect(screen.getByTestId('verified-nature-counter')).toHaveTextContent('456');
   });
 
   it('wanders creatures through short walks, uses walking state, and returns to idle', () => {

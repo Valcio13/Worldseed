@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 describe('OpeningReveal', () => {
-  it('shows the existing Worldseed wordmark while leaving the game render independent', () => {
+  it('shows the official Worldseed logo while leaving the game render independent', () => {
     render(
       <>
         <OpeningReveal />
@@ -19,7 +19,14 @@ describe('OpeningReveal', () => {
     );
 
     expect(screen.getByTestId('opening-reveal')).toBeInTheDocument();
-    expect(screen.getByText('worldseed')).toBeInTheDocument();
+    expect(screen.getByTestId('opening-reveal').querySelector('img')).toHaveAttribute(
+      'alt',
+      'Worldseed',
+    );
+    expect(screen.getByTestId('opening-reveal').querySelector('img')).toHaveAttribute(
+      'src',
+      '/assets/branding/worldseed-logo.png',
+    );
     expect(screen.getByTestId('game-underlay')).toBeInTheDocument();
   });
 

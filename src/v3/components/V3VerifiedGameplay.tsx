@@ -37,16 +37,28 @@ export interface V3IslandSnapshot {
   /** Habitat sum capped to the existing 15-level visual-stage ceiling. */
   visualHabitatLevelCount: number;
   scoreTier: number;
+  rulesVersion: number;
+  habitats: Array<{
+    id: V3HabitatKind;
+    level: number;
+    nextCost: string | null;
+    canBuyOne: boolean;
+    maxAffordable: number;
+    purchasedUpgradeCount: number;
+    productionUpgrades: Array<{
+      milestone: number;
+      cost: string;
+      purchased: boolean;
+      available: boolean;
+    }>;
+  }>;
 }
 
-const HABITAT_PRESENTATION: Record<V3HabitatKind, { name: string; symbol: string }> = {
-  water: { name: 'Water', symbol: '≈' },
-  grass: { name: 'Grass', symbol: '✿' },
-  forest: { name: 'Forest', symbol: '♧' },
-  mountain: { name: 'Mountain', symbol: '▲' },
-  'crystal-cavern': { name: 'Crystal Cavern', symbol: '◇' },
-  'ancient-grove': { name: 'Ancient Grove', symbol: '♧' },
-};
+export interface V3IslandActionHandlers {
+  pending: boolean;
+  buyHabitat: (habitat: V3HabitatKind, quantity: number) => void;
+  buyProductionUpgrade: (habitat: V3HabitatKind) => void;
+}
 
 function formatNatureAtoms(atoms: bigint): string {
   if (atoms === 0n) return '0';
@@ -95,12 +107,15 @@ export function V3VerifiedGameplay({
   sessionToken,
   onSnapshotChange,
   onHeartActionReady,
+  onActionHandlersReady,
 }: V3VerifiedGameplayProps & {
   onSnapshotChange?: (snapshot: V3IslandSnapshot | null) => void;
   onHeartActionReady?: (action: (() => void) | null) => void;
+  onActionHandlersReady?: (handlers: V3IslandActionHandlers | null) => void;
 }) {
   const queue = useV3Commands(runId, sessionToken);
   const recoverState = queue.recoverState;
+  const submitCommand = queue.submitCommand;
   const [snapshot, setSnapshot] = useState<VerifiedSnapshot | null>(null);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const acceptedSequence = useRef(-1);
@@ -110,6 +125,32 @@ export function V3VerifiedGameplay({
     acceptedSequence.current = next.state.sequence;
     setSnapshot(next);
     setSnapshotError(null);
+    const habitats = habitatsForVerifiedState(next.state).map((id) => {
+      const level = habitatLevelForVerifiedState(next.state, id) ?? 0;
+      const nextCost = habitatPurchaseCostForVerifiedState(next.state, id, 1);
+      const upgrades = purchasedHabitatProductionMilestones(next.state, id);
+      const nextMilestone = nextHabitatProductionMilestone(next.state, id);
+      return {
+        id,
+        level,
+        nextCost: nextCost === null ? null : formatNatureAtoms(nextCost),
+        canBuyOne: nextCost !== null && nextCost <= next.state.natureAtoms,
+        maxAffordable: maxAffordableQuantity(next.state, id),
+        purchasedUpgradeCount: upgrades.length,
+        productionUpgrades: isV1VerifiedState(next.state)
+          ? []
+          : rulesV2.HABITAT_UPGRADE_MILESTONES.map((milestone) => {
+              const cost = rulesV2.habitatProductionUpgradeCost(id as rulesV2.Habitat, milestone);
+              return {
+                milestone,
+                cost: formatNatureAtoms(cost),
+                purchased: upgrades.includes(milestone),
+                available:
+                  nextMilestone === milestone && level >= milestone && cost <= next.state.natureAtoms,
+              };
+            }),
+      };
+    });
     onSnapshotChange?.({
       nature: formatNatureAtoms(next.state.natureAtoms),
       earnedNature: formatNatureAtoms(next.state.earnedNatureAtoms),
@@ -119,6 +160,8 @@ export function V3VerifiedGameplay({
         0,
       ),
       scoreTier: next.scoreTier,
+      rulesVersion: next.state.rulesVersion,
+      habitats,
     });
   }, [onSnapshotChange]);
 
@@ -166,15 +209,36 @@ export function V3VerifiedGameplay({
 
   const send = useCallback(async (command: V3GameplayCommand) => {
     try {
-      await queue.submitCommand(command);
+      await submitCommand(command);
     } catch {
       // The queue retains the verifier error/status and renders its retry path.
     }
-  }, [queue.submitCommand]);
+  }, [submitCommand]);
 
   const submitHeartClick = useCallback(() => {
     void send({ type: 'heart-click' });
   }, [send]);
+
+  const buyHabitat = useCallback((habitat: V3HabitatKind, quantity: number) => {
+    if (!snapshot) return;
+    const command = createHabitatPurchaseCommand(snapshot.state, habitat, quantity);
+    if (command) void send(command);
+  }, [send, snapshot]);
+
+  const buyProductionUpgrade = useCallback((habitat: V3HabitatKind) => {
+    if (!snapshot) return;
+    const command = createHabitatProductionUpgradeCommand(snapshot.state, habitat);
+    if (command) void send(command);
+  }, [send, snapshot]);
+
+  useEffect(() => {
+    onActionHandlersReady?.(snapshot ? {
+      pending: actionsDisabled,
+      buyHabitat,
+      buyProductionUpgrade,
+    } : null);
+    return () => onActionHandlersReady?.(null);
+  }, [actionsDisabled, buyHabitat, buyProductionUpgrade, onActionHandlersReady, snapshot]);
 
   useEffect(() => {
     onHeartActionReady?.(actionsDisabled ? null : submitHeartClick);
@@ -184,109 +248,11 @@ export function V3VerifiedGameplay({
   useEffect(() => () => onSnapshotChange?.(null), [onSnapshotChange]);
 
   return (
-    <section className="v3-integration-auth" aria-label="Verified gameplay">
-      <div className="v3-integration-section-heading">
-        <h2>Verified island</h2>
-        <strong>{snapshot ? `Run ${runId} · Tier ${snapshot.scoreTier}` : 'Recovering run'}</strong>
-      </div>
-
-      {snapshotError && <p className="v3-integration-error" role="alert">{snapshotError}</p>}
-      {!snapshot && !snapshotError && <p role="status">Loading verifier-accepted run state…</p>}
-
-      {snapshot && (
-        <>
-          <div aria-label="Verified habitat purchases">
-            {habitatsForVerifiedState(snapshot.state).map((id) => {
-              const { name, symbol } = HABITAT_PRESENTATION[id];
-              const level = habitatLevelForVerifiedState(snapshot.state, id);
-              const hasLevelCapacity = level !== null && level < Number.MAX_SAFE_INTEGER;
-              const cost = hasLevelCapacity ? habitatPurchaseCostForVerifiedState(snapshot.state, id, 1) : null;
-              const maxQuantity = maxAffordableQuantity(snapshot.state, id);
-              const purchasedMilestones = purchasedHabitatProductionMilestones(snapshot.state, id);
-              const nextMilestone = nextHabitatProductionMilestone(snapshot.state, id);
-              const hasV2Milestones = !isV1VerifiedState(snapshot.state);
-              return (
-                <section key={id} aria-label={`${name} habitat`}>
-                  <h3>{symbol} {name}</h3>
-                  <p>
-                    Level <strong data-testid={`verified-habitat-${id}`}>{level}</strong>
-                  </p>
-                  <p>Next habitat: {cost === null ? 'level cap reached' : `${formatNatureAtoms(cost)} Nature`}</p>
-                  <button
-                    type="button"
-                    className="v3-integration-action"
-                    disabled={actionsDisabled || cost === null || snapshot.state.natureAtoms < cost}
-                    onClick={() => {
-                      const command = createHabitatPurchaseCommand(snapshot.state, id, 1);
-                      if (command) void send(command);
-                    }}
-                    aria-label={`Buy 1 verified ${name}`}
-                  >
-                    Buy 1 {name}
-                  </button>
-                  <button
-                    type="button"
-                    className="v3-integration-action"
-                    disabled={actionsDisabled || maxQuantity === 0}
-                    onClick={() => {
-                      const command = createHabitatPurchaseCommand(snapshot.state, id, maxQuantity);
-                      if (command) void send(command);
-                    }}
-                    aria-label={`Buy maximum verified ${name}`}
-                  >
-                    Buy max ({maxQuantity})
-                  </button>
-                  {hasV2Milestones && (
-                    <div aria-label={`${name} production upgrades`}>
-                      <h4>Production upgrades</h4>
-                      {rulesV2.HABITAT_UPGRADE_MILESTONES.map(milestone => {
-                        const purchased = purchasedMilestones.includes(milestone);
-                        const isNext = nextMilestone === milestone;
-                        const milestoneCost = rulesV2.habitatProductionUpgradeCost(id as rulesV2.Habitat, milestone);
-                        const affordable = snapshot.state.natureAtoms >= milestoneCost;
-                        const available = isNext && affordable;
-                        const status = purchased
-                          ? 'Purchased'
-                          : level !== null && level < milestone
-                            ? `Locked · requires level ${milestone}`
-                            : available
-                              ? 'Available'
-                            : isNext && !affordable
-                              ? 'Unaffordable'
-                              : 'Locked · previous upgrade required';
-                        return (
-                          <div key={milestone}>
-                            <span>Ownership level {milestone}</span>
-                            <span>{purchased ? status : `${formatNatureAtoms(milestoneCost)} Nature`}</span>
-                            {!purchased && <span>{status}</span>}
-                            {!purchased && (
-                              <button
-                                type="button"
-                                className="v3-integration-action"
-                                disabled={actionsDisabled || !available}
-                                onClick={() => {
-                                  const command = createHabitatProductionUpgradeCommand(snapshot.state, id);
-                                  if (command) void send(command);
-                                }}
-                                aria-label={`Buy ${name} level ${milestone} production upgrade`}
-                              >
-                                Buy level {milestone} upgrade
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </section>
-              );
-            })}
-          </div>
-        </>
-      )}
-
+    <section className="v3-verified-runtime" aria-label="Verified run activity">
+      {snapshotError && <p className="living-notice" role="alert">{snapshotError}</p>}
+      {!snapshot && !snapshotError && <p className="living-notice" role="status">Syncing verified island…</p>}
       {queue.state && (
-        <V3CommandQueue
+          <V3CommandQueue
           queueState={queue.state}
           onRetry={commandId => { void queue.retryCommand(commandId).catch(() => undefined); }}
           onRecover={() => {
@@ -299,7 +265,7 @@ export function V3VerifiedGameplay({
               .catch(error => setSnapshotError(error instanceof Error ? error.message : 'Could not recover verified run.'));
           }}
           onClear={queue.clearCompleted}
-        />
+          />
       )}
     </section>
   );

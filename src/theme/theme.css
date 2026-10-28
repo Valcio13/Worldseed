@@ -1,0 +1,504 @@
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  color: #f1f1e6;
+  background: #183529;
+  --ink: #f1f1e6;
+  --muted: #b4c3b5;
+  --deep: #dfe8d7;
+  --leaf: #8cab7e;
+  --paper: #203b2e;
+  --line: #496653;
+}
+
+:root[data-theme='dark'] body {
+  color: #f1f1e6;
+  background: radial-gradient(ellipse at 85% 12%, #294837 0, #1d3a2d 48%, #173327 100%);
+}
+
+:root[data-theme='dark'] .living-game {
+  --living-ivory: #1b362a;
+  --living-card: #244334;
+  --living-surface: #2d4a39;
+  --living-warm-surface: #48432f;
+  --living-sage: #718e70;
+  --living-green: #6f9c73;
+  --living-green-hover: #7ba981;
+  --living-green-soft: #304e3b;
+  --living-green-soft-hover: #3b5e46;
+  --living-gold-ink: #e0c97f;
+  --living-sand: #48432f;
+  --living-ink: #f1f1e6;
+  --living-muted: #b4c3b5;
+  --living-disabled: #a2b1a4;
+  --living-line: #496653;
+  background: var(--living-ivory);
+}
+
+:root[data-theme='dark'] .living-scene {
+  border-color: #566f72;
+  background:
+    radial-gradient(ellipse at 51% 35%, rgba(153, 177, 205, 0.13), transparent 58%),
+    linear-gradient(#202f4d 0%, #293852 56%, #354b4e 100%);
+  box-shadow:
+    inset 0 0 0 5px rgba(225, 230, 221, 0.08),
+    0 9px 25px rgba(8, 18, 30, 0.24);
+}
+
+:root[data-theme='dark'] .living-scene-sky::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 12% 22%, #e5e7cf 99%, transparent),
+    radial-gradient(1.5px 1.5px at 28% 56%, #d8e4da 99%, transparent),
+    radial-gradient(1px 1px at 48% 18%, #f0e9c8 99%, transparent),
+    radial-gradient(1px 1px at 68% 42%, #d7e5e6 99%, transparent),
+    radial-gradient(1.5px 1.5px at 86% 20%, #eee6c0 99%, transparent),
+    radial-gradient(1px 1px at 91% 68%, #d8e4da 99%, transparent);
+  content: '';
+  opacity: 0.76;
+  animation: night-sky-twinkle 7s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+:root[data-theme='dark'] .scene-distant-island::before {
+  background: #607584;
+}
+
+:root[data-theme='dark'] .scene-distant-island::after {
+  background: #3e5b62;
+}
+
+:root[data-theme='dark'] .pixel-cloud {
+  background: #93a2b1;
+  box-shadow:
+    14px -10px 0 -2px #93a2b1,
+    30px -8px 0 0 #93a2b1,
+    42px 0 0 -2px #93a2b1;
+  opacity: 0.2;
+}
+
+:root[data-theme='dark'] .living-island-water {
+  background:
+    radial-gradient(ellipse at 52% 8%, rgba(174, 203, 199, 0.15), transparent 56%),
+    linear-gradient(180deg, #527482 0%, #426675 55%, #385966 100%);
+  box-shadow: inset 0 9px 0 rgba(194, 216, 200, 0.24);
+}
+
+:root[data-theme='dark'] .water-glint {
+  background: rgba(220, 232, 215, 0.4);
+  box-shadow: 5px 4px 0 -1px rgba(207, 225, 218, 0.24);
+}
+
+:root[data-theme='dark'] .living-island-land {
+  border-color: #79634e;
+  background-color: #638760;
+  background-image:
+    linear-gradient(rgba(24, 43, 34, 0.24), rgba(24, 43, 34, 0.24)),
+    url('/assets/third-party/craftpix/terrain/grass-field-tile.png');
+  box-shadow:
+    inset 0 -15px 0 rgba(40, 65, 47, 0.28),
+    0 15px 0 #5e4e41,
+    0 19px 0 rgba(12, 29, 27, 0.3);
+}
+
+:root[data-theme='dark'] .island-heart::before {
+  background: rgba(255, 218, 112, 0.52);
+}
+
+:root[data-theme='dark'] .island-heart-sprite {
+  filter: drop-shadow(0 0 8px rgba(255, 204, 91, 0.4));
+}
+
+@keyframes night-sky-twinkle {
+  from { opacity: 0.54; }
+  to { opacity: 0.9; }
+}
+
+/* The environment artwork keeps its own palette; only overlaid interface labels change. */
+:root[data-theme='dark'] .island-stage-label,
+:root[data-theme='dark'] .island-stage-progress {
+  border-color: rgba(35, 60, 45, 0.72);
+  color: #f3f0df;
+  background: rgba(28, 54, 40, 0.88);
+}
+
+:root[data-theme='dark'] .island-stage-progress-track {
+  background: #405c42;
+}
+
+:root[data-theme='dark'] .living-habitat--water .living-habitat-icon,
+:root[data-theme='dark'] .living-habitat--forest .living-habitat-icon,
+:root[data-theme='dark'] .living-habitat--mountain .living-habitat-icon,
+:root[data-theme='dark'] .living-habitat--crystal-cavern .living-habitat-icon,
+:root[data-theme='dark'] .living-habitat--ancient-grove .living-habitat-icon {
+  border-color: var(--living-line);
+  color: #e2d99f;
+  background: #354d3d;
+}
+
+:root[data-theme='dark'] .living-rebirth-button {
+  color: #fffef4;
+}
+
+:root[data-theme='dark'] .living-game :is(input:not([type='range']), select, textarea) {
+  border-color: var(--living-line);
+  color: var(--living-ink);
+  background: var(--living-surface);
+}
+
+:root[data-theme='dark'] .living-save-overlay section {
+  border-color: var(--living-line);
+  color: var(--living-ink);
+  background: var(--living-card);
+}
+
+:root[data-theme='dark'] .living-save-overlay p {
+  color: var(--living-muted);
+}
+
+:root[data-theme='dark'] .living-rebirth-button--secondary {
+  color: var(--living-ink);
+  background: var(--living-green-soft);
+}
+
+:root[data-theme='dark'] .v3-living-account,
+:root[data-theme='dark'] .v3-advanced-activity {
+  color: var(--living-ink);
+}
+
+:root[data-theme='dark'] .v3-living-account > summary,
+:root[data-theme='dark'] .v3-advanced-activity > summary {
+  border-color: var(--living-line);
+  color: var(--living-ink);
+  background: var(--living-card);
+}
+
+:root[data-theme='dark'] .v3-living-account[open] > summary,
+:root[data-theme='dark'] .v3-advanced-activity[open] > summary {
+  border-color: var(--living-sage);
+  background: var(--living-green-soft);
+}
+
+:root[data-theme='dark'] .v3-living-account > summary::after,
+:root[data-theme='dark'] .v3-advanced-activity > summary::after,
+:root[data-theme='dark'] .v3-living-account-mode {
+  color: var(--living-muted);
+}
+
+:root[data-theme='dark'] .v3-living-account-panel,
+:root[data-theme='dark'] .v3-advanced-panel {
+  border-color: var(--living-line);
+  color: var(--living-ink);
+  background: #203b2e;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 36%);
+}
+
+:root[data-theme='dark'] .v3-living-account-panel button,
+:root[data-theme='dark'] .v3-advanced-panel button {
+  border-color: var(--living-sage);
+  color: var(--living-ink);
+  background: var(--living-green-soft);
+}
+
+:root[data-theme='dark'] .v3-start-run-menu,
+:root[data-theme='dark'] .v3-abandon-section {
+  border-color: var(--living-line);
+}
+
+:root[data-theme='dark'] .v3-start-run-menu > summary,
+:root[data-theme='dark'] .v3-abandon-section > summary {
+  color: #dbe8d6;
+}
+
+:root[data-theme='dark'] .v3-living-error,
+:root[data-theme='dark'] .v3-living-flow--failed {
+  color: #ffaaa0;
+}
+
+:root[data-theme='dark'] .v3-living-flow--confirmed {
+  color: #a8d5a3;
+}
+
+:root[data-theme='dark'] .v3-integration-nav {
+  background: #142c22;
+}
+
+:root[data-theme='dark'] .v3-integration-nav button,
+:root[data-theme='dark'] .v3-integration-heading button,
+:root[data-theme='dark'] .v3-integration-action {
+  border-color: #6b8f6a;
+  color: #f1f1e6;
+  background: #355a43;
+}
+
+:root[data-theme='dark'] .v3-integration-nav button[aria-pressed='true'] {
+  color: #24382a;
+  background: #d2bd75;
+}
+
+:root[data-theme='dark'] .v3-mode-badge,
+:root[data-theme='dark'] .living-mode-switch {
+  border-color: var(--living-line);
+  color: #dce8d8;
+  background: #2e4a39;
+}
+
+:root[data-theme='dark'] .living-mode-switch button {
+  color: #dce8d8;
+}
+
+:root[data-theme='dark'] .living-mode-switch button[aria-pressed='true'] {
+  color: #fffef4;
+  background: #426b50;
+}
+
+:root[data-theme='dark'] .v3-island-mode {
+  border-color: var(--living-line);
+  background: var(--living-card);
+}
+
+:root[data-theme='dark'] .v3-island-mode > summary {
+  color: #e4ead7;
+}
+
+:root[data-theme='dark'] .v3-integration-page {
+  border-color: #617c60;
+  color: #f1f1e6;
+  background: #243e30;
+}
+
+:root[data-theme='dark'] .v3-integration-heading p,
+:root[data-theme='dark'] .v3-integration-explanation {
+  color: #c1cfbf;
+}
+
+:root[data-theme='dark'] .v3-integration-pending,
+:root[data-theme='dark'] .v3-integration-auth,
+:root[data-theme='dark'] .v3-integration-flow-status,
+:root[data-theme='dark'] .v3-integration-disabled-actions {
+  border-color: #766b43;
+  color: #efe4b5;
+  background: #443f2e;
+}
+
+:root[data-theme='dark'] .v3-integration-error,
+:root[data-theme='dark'] .v3-integration-flow-status--error,
+:root[data-theme='dark'] .v3-error-text {
+  color: #ffaaa0;
+}
+
+:root[data-theme='dark'] .v3-config-notice,
+:root[data-theme='dark'] .v3-access-notice,
+:root[data-theme='dark'] .v3-upgrade-notice {
+  border: 1px solid rgba(201, 173, 101, 0.35);
+  color: #ead99c;
+  background: rgba(201, 173, 101, 0.14);
+}
+
+:root[data-theme='dark'] .v3-stat--pending,
+:root[data-theme='dark'] .v3-command-badge--pending {
+  color: #f0d58b;
+  background: rgba(201, 173, 101, 0.2);
+}
+
+:root[data-theme='dark'] .v3-stat--confirmed,
+:root[data-theme='dark'] .v3-command-badge--confirmed {
+  color: #b7dfb1;
+  background: rgba(130, 170, 120, 0.2);
+}
+
+:root[data-theme='dark'] .v3-stat--failed,
+:root[data-theme='dark'] .v3-command-badge--failed {
+  color: #ffaaa0;
+  background: rgba(196, 124, 124, 0.2);
+}
+
+:root[data-theme='dark'] .v3-upgrade-cost,
+:root[data-theme='dark'] .v3-pp-display {
+  color: #ead99c;
+}
+
+:root[data-theme='dark'] .v3-integration-flow-status--success {
+  color: #a8d5a3;
+}
+
+:root[data-theme='dark'] .v3-start-info,
+:root[data-theme='dark'] .v3-run-stats,
+:root[data-theme='dark'] .v3-start-upgrade-row {
+  background: #2d4a39;
+}
+
+:root[data-theme='dark'] .v3-controls-notice strong,
+:root[data-theme='dark'] .v3-start-upgrades h4,
+:root[data-theme='dark'] .v3-upgrade-level-display,
+:root[data-theme='dark'] .v3-stat-item strong {
+  color: #f1f1e6;
+}
+
+:root[data-theme='dark'] .v3-controls-notice p,
+:root[data-theme='dark'] .v3-start-info p,
+:root[data-theme='dark'] .v3-upgrades-hint,
+:root[data-theme='dark'] .v3-start-upgrade-name small,
+:root[data-theme='dark'] .v3-stat-item span,
+:root[data-theme='dark'] .v3-abandon-section summary,
+:root[data-theme='dark'] .v3-abandon-section p,
+:root[data-theme='dark'] .v3-start-note {
+  color: #b4c3b5;
+}
+
+:root[data-theme='dark'] .v3-panel-heading strong,
+:root[data-theme='dark'] .v3-status-item dd,
+:root[data-theme='dark'] .v3-queue-header h3,
+:root[data-theme='dark'] .v3-command-type,
+:root[data-theme='dark'] .v3-upgrade-name {
+  color: #f1f1e6;
+}
+
+:root[data-theme='dark'] .v3-panel-kicker,
+:root[data-theme='dark'] .v3-status-loading,
+:root[data-theme='dark'] .v3-status-error,
+:root[data-theme='dark'] .v3-status-description,
+:root[data-theme='dark'] .v3-status-item dt,
+:root[data-theme='dark'] .v3-queue-empty,
+:root[data-theme='dark'] .v3-command-time,
+:root[data-theme='dark'] .v3-upgrade-level,
+:root[data-theme='dark'] .v3-upgrade-description,
+:root[data-theme='dark'] .v3-upgrade-progress-label,
+:root[data-theme='dark'] .v3-upgrade-notice {
+  color: #b4c3b5;
+}
+
+:root[data-theme='dark'] .v3-status-panel,
+:root[data-theme='dark'] .v3-command-queue,
+:root[data-theme='dark'] .v3-upgrade-tree {
+  border-color: #496653;
+  color: #f1f1e6;
+  background: rgba(36, 67, 52, 0.95);
+}
+
+:root[data-theme='dark'] .v3-upgrade-item {
+  border-color: #496653;
+  background: #2c4938;
+}
+
+:root[data-theme='dark'] .v3-command-item--pending {
+  background: rgba(201, 173, 101, 0.13);
+}
+
+:root[data-theme='dark'] .v3-command-item--confirmed {
+  background: rgba(130, 170, 120, 0.13);
+}
+
+:root[data-theme='dark'] .v3-command-item--failed {
+  background: rgba(196, 124, 124, 0.15);
+}
+
+:root[data-theme='dark'] .v3-queue-submitting {
+  color: #f0d58b;
+  background: rgba(201, 173, 101, 0.16);
+}
+
+:root[data-theme='dark'] .v3-tier-badge,
+:root[data-theme='dark'] .v3-primary-button {
+  color: #fffef4;
+}
+
+:root[data-theme='dark'] .v3-secondary-button,
+:root[data-theme='dark'] .v3-upgrade-buy-button,
+:root[data-theme='dark'] .v3-upgrade-adjust,
+:root[data-theme='dark'] .v3-retry-button,
+:root[data-theme='dark'] .v3-queue-clear {
+  border-color: #6b8f6a;
+  color: #dce8d8;
+}
+
+:root[data-theme='dark'] .v3-danger-button {
+  border-color: rgba(255, 170, 160, 0.48);
+  color: #ffaaa0;
+}
+
+:root[data-theme='dark'] .v3-status-details,
+:root[data-theme='dark'] .v3-queue-header {
+  border-color: #496653;
+}
+
+:root[data-theme='dark'] .v3-upgrade-progress-track {
+  background: #405c42;
+}
+
+:root[data-theme='dark'] .v3-upgrade-buy-button:disabled,
+:root[data-theme='dark'] .v3-upgrade-adjust:disabled,
+:root[data-theme='dark'] .v3-primary-button:disabled,
+:root[data-theme='dark'] .v3-secondary-button:disabled,
+:root[data-theme='dark'] .v3-danger-button:disabled {
+  color: #a4b1a3;
+  background: #35483a;
+}
+
+:root[data-theme='dark'] .audio-settings summary,
+:root[data-theme='dark'] .worldseed-theme-toggle {
+  border-color: #54725b;
+  color: #f0eddb;
+  background: #2d4a39;
+}
+
+:root[data-theme='dark'] .audio-settings-panel {
+  border-color: #54725b;
+  color: #f1f1e6;
+  background: #203b2e;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+}
+
+:root[data-theme='dark'] .audio-settings-panel button {
+  border-color: #668266;
+  color: #f1f1e6;
+  background: #355642;
+}
+
+:root[data-theme='dark'] .audio-settings-panel label {
+  color: #dce5d7;
+}
+
+:root[data-theme='dark'] :is(button, a, summary, input, select, textarea):focus-visible {
+  outline-color: #e3c979;
+}
+
+.worldseed-theme-toggle {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid rgba(108, 147, 105, 0.28);
+  border-radius: 999px;
+  color: #3d6245;
+  background: #f7f7e8;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.worldseed-theme-toggle > span:first-child {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.worldseed-theme-toggle:focus-visible {
+  outline: 3px solid #78a96b;
+  outline-offset: 2px;
+}
+
+@media (max-width: 520px) {
+  .worldseed-theme-toggle {
+    min-width: 36px;
+    padding: 0 8px;
+  }
+
+  .worldseed-theme-toggle-label {
+    display: none;
+  }
+}

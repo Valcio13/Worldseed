@@ -20,11 +20,12 @@ export type IslandSound =
 
 const STORAGE_KEY = 'worldseed:audio-preferences:v1';
 const LEGACY_SOUND_KEY = 'worldseed:sound';
+const MUSIC_DISABLED_KEY = 'worldseed:music-explicitly-disabled:v1';
 const DEFAULT_PREFERENCES: AudioPreferences = {
   musicVolume: 0.14,
   sfxVolume: 0.42,
   muted: false,
-  musicEnabled: false,
+  musicEnabled: true,
 };
 
 const SFX_NOTES: Record<IslandSound, number[]> = {
@@ -56,6 +57,29 @@ let crossfadeStartedAt: number | null = null;
 let crossfadeFrom = 0;
 let sfxBusyUntil = Number.NEGATIVE_INFINITY;
 const listeners = new Set<(value: AudioPreferences) => void>();
+let musicStartPending = false;
+let musicGestureFallback: (() => void) | null = null;
+
+function removeMusicGestureFallback(): void {
+  if (!musicGestureFallback || typeof document === 'undefined') return;
+  document.removeEventListener('pointerdown', musicGestureFallback);
+  document.removeEventListener('click', musicGestureFallback);
+  document.removeEventListener('keydown', musicGestureFallback);
+  document.removeEventListener('touchstart', musicGestureFallback);
+  musicGestureFallback = null;
+}
+
+function installMusicGestureFallback(): void {
+  if (musicGestureFallback || typeof document === 'undefined') return;
+  musicGestureFallback = () => {
+    if (!preferences.musicEnabled || preferences.muted || preferences.musicVolume <= 0) return;
+    startMusic();
+  };
+  document.addEventListener('pointerdown', musicGestureFallback);
+  document.addEventListener('click', musicGestureFallback);
+  document.addEventListener('keydown', musicGestureFallback);
+  document.addEventListener('touchstart', musicGestureFallback);
+}
 
 function clampVolume(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value)
@@ -66,6 +90,7 @@ function clampVolume(value: unknown, fallback: number): number {
 function readPreferences(): AudioPreferences {
   if (typeof localStorage === 'undefined') return { ...DEFAULT_PREFERENCES };
   try {
+    const explicitlyDisabled = localStorage.getItem(MUSIC_DISABLED_KEY) === 'true';
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed: unknown = JSON.parse(stored);
@@ -75,14 +100,15 @@ function readPreferences(): AudioPreferences {
           musicVolume: clampVolume(value.musicVolume, DEFAULT_PREFERENCES.musicVolume),
           sfxVolume: clampVolume(value.sfxVolume, DEFAULT_PREFERENCES.sfxVolume),
           muted: typeof value.muted === 'boolean' ? value.muted : false,
-          // Old preferences did not include opt-in; keep music off until explicitly enabled.
-          musicEnabled: value.musicEnabled === true,
+          // Old builds persisted their default-off state; only the explicit opt-out marker is authoritative.
+          musicEnabled: !explicitlyDisabled,
         };
       }
     }
     return {
       ...DEFAULT_PREFERENCES,
       muted: localStorage.getItem(LEGACY_SOUND_KEY) === 'off',
+      musicEnabled: !explicitlyDisabled,
     };
   } catch {
     return { ...DEFAULT_PREFERENCES };
@@ -116,8 +142,21 @@ export function updateAudioPreferences(update: Partial<AudioPreferences>): Audio
   };
   persistPreferences();
   syncBuses();
+  if (!preferences.musicEnabled || preferences.muted || preferences.musicVolume <= 0)
+    removeMusicGestureFallback();
   listeners.forEach((listener) => listener(getAudioPreferences()));
   return getAudioPreferences();
+}
+
+/** Persist the player's explicit Play/Pause choice separately from legacy default-off records. */
+export function setMusicEnabledByUser(enabled: boolean): AudioPreferences {
+  try {
+    if (enabled) localStorage.removeItem(MUSIC_DISABLED_KEY);
+    else localStorage.setItem(MUSIC_DISABLED_KEY, 'true');
+  } catch {
+    // Keep the current session's choice even when storage is unavailable.
+  }
+  return updateAudioPreferences({ musicEnabled: enabled });
 }
 
 function ensureAudioContext(): IslandAudioContext | null {
@@ -166,7 +205,7 @@ function ensureMusicPlayers(): [IslandMusicElement, IslandMusicElement] | null {
         if (index !== currentMusicPlayer || crossfadeStartedAt !== null) return;
         // A short/unknown-duration stream still loops if crossfade preparation was unavailable.
         player.currentTime = 0;
-        void player.play().catch(() => undefined);
+        startMusic();
       });
     });
     musicPlayers = players;
@@ -247,14 +286,34 @@ function startMusic(): void {
   const players = ensureMusicPlayers();
   if (!players) return;
   const player = players[currentMusicPlayer]!;
+  if (!player.paused) {
+    removeMusicGestureFallback();
+    return;
+  }
+  if (musicStartPending) return;
   syncMusicVolumes();
   try {
-    void player.play().catch(() => {
-      // Autoplay restrictions or unavailable media never affect gameplay.
-    });
+    const playback = player.play();
+    musicStartPending = true;
+    void playback.then(
+      () => {
+        musicStartPending = false;
+        removeMusicGestureFallback();
+      },
+      () => {
+        musicStartPending = false;
+        installMusicGestureFallback();
+      },
+    );
   } catch {
-    // Limited browser environments may not implement media playback.
+    musicStartPending = false;
+    installMusicGestureFallback();
   }
+}
+
+/** Try startup playback; if browser policy blocks it, retry on the next user gesture. */
+export function attemptIslandMusicAutoplay(): void {
+  startMusic();
 }
 
 /** Call from a user action to comply with browser autoplay restrictions. */

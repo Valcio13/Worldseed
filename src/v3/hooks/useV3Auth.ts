@@ -41,17 +41,100 @@ const emptyAuthState: V3AuthState = {
   isCorrectChain: false,
 };
 
+interface InMemoryV3Session {
+  wallet: string;
+  chainId: number;
+  verifyingContract: string;
+  runId: string;
+  sessionToken: string | null;
+  expiresAtMs: number;
+}
+
+// Keep a verifier session only in this page's memory so unmounting Live while
+// the player visits Guest does not discard a still-valid session. A refresh
+// clears this module state and therefore still requires explicit auth again.
+let inMemorySession: InMemoryV3Session | null = null;
+let inMemoryExpiryTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+
+function clearInMemorySession(): void {
+  if (inMemoryExpiryTimer) globalThis.clearTimeout(inMemoryExpiryTimer);
+  inMemoryExpiryTimer = null;
+  inMemorySession = null;
+}
+
+function cacheInMemorySession(session: InMemoryV3Session): void {
+  if (inMemoryExpiryTimer) globalThis.clearTimeout(inMemoryExpiryTimer);
+  inMemoryExpiryTimer = null;
+  if (session.expiresAtMs <= Date.now()) {
+    inMemorySession = { ...session, sessionToken: null };
+    return;
+  }
+  inMemorySession = session;
+  inMemoryExpiryTimer = globalThis.setTimeout(() => {
+    if (inMemorySession?.sessionToken === session.sessionToken)
+      inMemorySession = { ...session, sessionToken: null };
+    inMemoryExpiryTimer = null;
+  }, session.expiresAtMs - Date.now());
+}
+
+function readInMemorySession(wallet?: string, chainId?: number): InMemoryV3Session | null {
+  if (!inMemorySession || !wallet || wallet.toLowerCase() !== inMemorySession.wallet ||
+      chainId !== inMemorySession.chainId || v3ContractAddress?.toLowerCase() !== inMemorySession.verifyingContract)
+    return null;
+  if (inMemorySession.sessionToken && inMemorySession.expiresAtMs <= Date.now()) {
+    if (inMemoryExpiryTimer) globalThis.clearTimeout(inMemoryExpiryTimer);
+    inMemoryExpiryTimer = null;
+    inMemorySession = { ...inMemorySession, sessionToken: null };
+  }
+  return inMemorySession;
+}
+
+/** Clears the page-memory verifier session after logout or explicit disconnect. */
+export function clearV3AuthSession(): void {
+  clearInMemorySession();
+}
+
+function authStateFromSession(
+  session: InMemoryV3Session,
+  isConfigured: boolean,
+  isCorrectChain: boolean,
+): V3AuthState {
+  const isAuthenticated = Boolean(session.sessionToken);
+  return {
+    ...emptyAuthState,
+    status: isAuthenticated ? 'authenticated' : 'idle',
+    sessionToken: session.sessionToken,
+    expiresAtMs: isAuthenticated ? session.expiresAtMs : null,
+    error: isAuthenticated ? null : 'Session expired',
+    wallet: session.wallet as `0x${string}`,
+    runId: isAuthenticated ? session.runId : null,
+    isAuthenticated,
+    isConfigured,
+    isCorrectChain,
+  };
+}
+
 export function useV3Auth() {
   const account = useAccount();
   const chainId = useChainId();
   const { signMessageAsync } = useSignMessage();
 
-  const [state, setState] = useState<V3AuthState>(emptyAuthState);
-  const expirationTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
-  const prevAccountRef = useRef<string | null>(null);
-
   const isConfigured = isV3Configured();
   const isCorrectChain = chainId === TARGET_CHAIN_ID;
+  const [state, setState] = useState<V3AuthState>(() => {
+    const cached = readInMemorySession(account.address, chainId);
+    return cached
+      ? authStateFromSession(cached, isConfigured, isCorrectChain)
+      : {
+          ...emptyAuthState,
+          wallet: account.address ?? null,
+          isConfigured,
+          isCorrectChain,
+        };
+  });
+  const expirationTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
+  const prevAccountRef = useRef<string | null>(inMemorySession?.wallet ?? account.address ?? null);
+
   const canAuthenticate = !!(isConfigured && account.address && isCorrectChain);
 
   // Handle session expiration
@@ -72,6 +155,8 @@ export function useV3Auth() {
           runId: null,
           error: 'Session expired',
         }));
+        if (inMemorySession?.expiresAtMs === expiresAtMs)
+          inMemorySession = { ...inMemorySession, sessionToken: null };
       }, timeUntilExpiry);
     }
   }, []);
@@ -80,26 +165,31 @@ export function useV3Auth() {
   useEffect(() => {
     const walletChanged = account.address !== prevAccountRef.current;
     const chainChanged = chainId !== TARGET_CHAIN_ID;
+    const cached = readInMemorySession(account.address, chainId);
 
     if (walletChanged || chainChanged) {
-      if (state.isAuthenticated) {
+      if (cached && !chainChanged) {
+        scheduleSessionExpiration(cached.expiresAtMs);
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setState((prev) => ({
-          ...prev,
-          status: 'idle',
-          sessionToken: null,
-          expiresAtMs: null,
-          isAuthenticated: false,
-          runId: null,
-          error: null,
-        }));
+        setState(authStateFromSession(cached, isConfigured, isCorrectChain));
+      } else {
+        clearInMemorySession();
         if (expirationTimerRef.current) {
           globalThis.clearTimeout(expirationTimerRef.current);
           expirationTimerRef.current = null;
         }
+        setState({
+          ...emptyAuthState,
+          wallet: account.address ?? null,
+          isConfigured,
+          isCorrectChain,
+        });
       }
       prevAccountRef.current = account.address || null;
+      return;
     }
+
+    if (cached?.sessionToken) scheduleSessionExpiration(cached.expiresAtMs);
 
     // Update configuration state
     setState((prev) => ({
@@ -108,7 +198,7 @@ export function useV3Auth() {
       isConfigured,
       isCorrectChain,
     }));
-  }, [account.address, chainId, isConfigured, isCorrectChain, state.isAuthenticated]);
+  }, [account.address, chainId, isConfigured, isCorrectChain, scheduleSessionExpiration, state.isAuthenticated]);
 
   // Clean up timer on unmount
   useEffect(() => {
@@ -210,6 +300,14 @@ export function useV3Auth() {
           signature,
         });
 
+        cacheInMemorySession({
+          wallet: account.address.toLowerCase(),
+          chainId: TARGET_CHAIN_ID,
+          verifyingContract: v3ContractAddress.toLowerCase(),
+          runId,
+          sessionToken: session.sessionToken,
+          expiresAtMs: session.expiresAtMs,
+        });
         // Store session and schedule expiration
         scheduleSessionExpiration(session.expiresAtMs);
 
@@ -245,6 +343,7 @@ export function useV3Auth() {
    * Clear authentication and reset to idle state
    */
   const logout = useCallback(() => {
+    clearInMemorySession();
     if (expirationTimerRef.current) {
       globalThis.clearTimeout(expirationTimerRef.current);
       expirationTimerRef.current = null;

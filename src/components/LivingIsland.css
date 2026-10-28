@@ -352,7 +352,7 @@
   transform: translateX(-50%);
   border: 7px solid #8b7052;
   border-radius: 48% 48% 35% 35% / 54% 54% 35% 35%;
-  overflow: hidden;
+  overflow: visible;
   background-color: var(--living-meadow);
   background-image:
     linear-gradient(rgba(47, 77, 52, 0.035), rgba(47, 77, 52, 0.035)),
@@ -384,6 +384,22 @@
 .living-scene--flourishing .living-island-land {
   width: 82%;
   height: 57%;
+}
+.living-scene--flourishing::after {
+  position: absolute;
+  z-index: 1;
+  top: 32.42%;
+  left: 11.46%;
+  width: clamp(132px, 17vw, 160px);
+  aspect-ratio: 5 / 4;
+  background: url('/assets/environment/living-island-campsite.png') center / contain no-repeat;
+  content: '';
+  filter: drop-shadow(1px 3px 0 rgba(47, 67, 43, 0.2));
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.living-scene--flourishing .island-campsite img {
+  opacity: 0;
 }
 .living-scene--flourishing .living-tree--3 {
   left: 8%;
@@ -1325,6 +1341,24 @@
 .living-rebirth-reward strong:first-of-type {
   color: var(--living-gold-ink);
 }
+.living-rebirth-preview {
+  display: grid;
+  gap: 3px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--living-line);
+  border-radius: 7px;
+  color: var(--living-muted);
+  background: var(--living-surface);
+  font-size: 10px;
+}
+.living-rebirth-preview strong {
+  color: var(--living-gold-ink);
+  font-size: 13px;
+}
+.living-rebirth-preview small {
+  font-size: 9px;
+}
 .living-rebirth-button {
   display: flex;
   width: 100%;
@@ -1770,6 +1804,11 @@
   .living-scene--flourishing .living-island-land {
     width: 88%;
     height: 58%;
+  }
+  .living-scene--flourishing::after {
+    top: 32.48%;
+    left: 8.64%;
+    width: clamp(92px, 26vw, 120px);
   }
   .island-campsite {
     top: 6%;

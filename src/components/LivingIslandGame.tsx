@@ -22,6 +22,7 @@ import {
 import { TARGET_CHAIN_ID, TARGET_CHAIN_NAME } from '../blockchain/config';
 import { transactionFailureMessage } from '../blockchain/transactions';
 import { isV3IdleIntegrationEnabled } from '../integration/featureFlags';
+import { clearV3AuthSession } from '../v3/hooks/useV3Auth';
 import { LivingIslandScreen, type LivingIslandMode } from './LivingIslandScreen';
 import { AudioSettings } from './AudioSettings';
 import {
@@ -243,7 +244,10 @@ export function LivingIslandGame() {
     try {
       if (account.isConnected) {
         if (chainId !== TARGET_CHAIN_ID) await switchChainAsync({ chainId: TARGET_CHAIN_ID });
-        else disconnect();
+        else {
+          clearV3AuthSession();
+          disconnect();
+        }
       } else if (connectors[0]) await connectAsync({ connector: connectors[0] });
       else showNotice('No browser wallet was found. Guest play does not require a wallet.');
     } catch (error) {

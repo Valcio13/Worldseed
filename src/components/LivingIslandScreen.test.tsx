@@ -149,6 +149,7 @@ describe('Living Island screen', () => {
       earnedNature: '600',
       productionPerSecond: '12',
       visualHabitatLevelCount: 5,
+      pendingHeartClicks: 0,
       scoreTier: 35,
       rulesVersion: 1,
       habitats: [],
@@ -189,6 +190,80 @@ describe('Living Island screen', () => {
     expect(screen.getByRole('button', { name: 'Live' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('shows estimated Rebirth rewards separately from settled balances and refreshes them with score tier', () => {
+    const verifiedIsland = {
+      nature: '456',
+      estimatedNature: '456',
+      earnedNature: '600',
+      productionPerSecond: '12',
+      visualHabitatLevelCount: 5,
+      pendingHeartClicks: 0,
+      scoreTier: 35,
+      rulesVersion: 1,
+      habitats: [],
+    };
+    const props = {
+      state: createEconomyState(1),
+      mode: 'verified' as const,
+      verifiedModeEnabled: true,
+      verifiedIsland,
+      verifiedProfile: {
+        activeRun: true,
+        runId: '1',
+        authenticated: true,
+        ready: true,
+        seasonalPP: '10',
+        seasonalCP: '3',
+        rewardRules: {
+          rebirthThresholdTier: 35,
+          ppStep: 10,
+          ppPerRebirthCap: 1_000n,
+          ppBase: 1n,
+          seasonPPCap: 100_000n,
+          seasonCPCap: 100_000n,
+          cpMilestoneStep: 7,
+        },
+        totalSeasonCP: '3',
+        maxSeasonPoints: '1000000',
+        lifetimeCP: '3',
+        lifetimeNature: '600',
+        accumulatedScore: '35',
+        seasonalAccumulatedScore: '35',
+        seasonalHighScoreTier: 0,
+        nextCpMilestoneTier: 42,
+        rebirthThresholdTier: 35,
+        seasonRebirths: 0,
+        upgradeLevels: { growth: 0, efficiency: 0, awakening: 0, rebirth: 0 },
+        wallet: '0x0000000000000000000000000000000000000001',
+        error: null,
+      },
+      verifiedSettlement: {
+        pending: false,
+        canSettle: true,
+        recordPoints: vi.fn(),
+        rebirth: vi.fn(),
+      },
+      nextSeasonStart: Date.UTC(2026, 10, 2),
+      saveLabel: 'Saved',
+      onHeartClick: vi.fn(),
+      onStateChange: vi.fn(),
+      onRebirth: vi.fn(),
+    };
+    const { rerender } = render(<LivingIslandScreen {...props} />);
+
+    expect(screen.getByText(/Settled balances/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Estimated Rebirth rewards')).toHaveTextContent('+1 PP · +0 CP');
+
+    rerender(
+      <LivingIslandScreen
+        {...props}
+        verifiedIsland={{ ...verifiedIsland, scoreTier: 42 }}
+      />,
+    );
+    expect(screen.getByLabelText('Estimated Rebirth rewards')).toHaveTextContent('+1 PP · +1 CP');
+    expect(screen.getByText(/Next CP milestone after Rebirth/)).toHaveTextContent('49');
+  });
+
   it('keeps Live Heart clicks enabled while queued Heart commands sync', () => {
     const heart = vi.fn();
     render(
@@ -198,7 +273,7 @@ describe('Living Island screen', () => {
         verifiedModeEnabled
         verifiedIsland={{
           nature: '1', estimatedNature: '1', earnedNature: '1', productionPerSecond: '0',
-          visualHabitatLevelCount: 0, scoreTier: 0, rulesVersion: 1, habitats: [],
+          visualHabitatLevelCount: 0, pendingHeartClicks: 0, scoreTier: 0, rulesVersion: 1, habitats: [],
         }}
         verifiedHeartAction={heart}
         verifiedActions={{
@@ -239,6 +314,7 @@ describe('Living Island screen', () => {
           earnedNature: '600',
           productionPerSecond: '12',
           visualHabitatLevelCount: 1,
+          pendingHeartClicks: 0,
           scoreTier: 1,
           rulesVersion: 1,
           habitats: [{
@@ -606,6 +682,7 @@ describe('Living Island screen', () => {
         'data-terrain-surface',
         'craftpix',
       );
+      expect(island.querySelector('.living-island-land')).toHaveStyle({ overflow: 'visible' });
       expect(island.querySelector('.island-terrain-preview-toggle')).toBeNull();
       expect(island.querySelectorAll('.living-tree')).toHaveLength(stage.trees);
       expect(island.querySelectorAll('.island-sprout')).toHaveLength(stage.flowers);

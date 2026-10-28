@@ -12,14 +12,21 @@ const mocks = vi.hoisted(() => ({
   saveGuestSave: vi.fn(),
   restoreGuestProgress: vi.fn(),
   archiveIncompatibleSave: vi.fn(),
+  walletConnected: false,
+  walletAddress: undefined as string | undefined,
+  chainId: 0,
+  clearAuthSession: vi.fn(),
+  disconnect: vi.fn(),
 }));
 
 vi.mock('../persistence/localSave', () => mocks);
+vi.mock('../integration/featureFlags', () => ({ isV3IdleIntegrationEnabled: () => false }));
+vi.mock('../v3/hooks/useV3Auth', () => ({ clearV3AuthSession: mocks.clearAuthSession }));
 vi.mock('wagmi', () => ({
-  useAccount: () => ({ isConnected: false, address: undefined }),
-  useChainId: () => 0,
+  useAccount: () => ({ isConnected: mocks.walletConnected, address: mocks.walletAddress }),
+  useChainId: () => mocks.chainId,
   useConnect: () => ({ connectAsync: vi.fn(), connectors: [], isPending: false }),
-  useDisconnect: () => ({ disconnect: vi.fn() }),
+  useDisconnect: () => ({ disconnect: mocks.disconnect }),
   useSwitchChain: () => ({ switchChainAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('../blockchain/config', () => ({
@@ -28,6 +35,10 @@ vi.mock('../blockchain/config', () => ({
 }));
 
 beforeEach(() => {
+  mocks.walletConnected = false;
+  mocks.walletAddress = undefined;
+  mocks.chainId = 0;
+  localStorage.removeItem('worldseed:play-mode:v1');
   vi.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   updateAudioPreferences({ musicEnabled: false, muted: false });
 });
@@ -41,6 +52,25 @@ afterEach(() => {
 });
 
 describe('Living Island guest persistence', () => {
+  it('clears Live authentication when explicitly disconnecting from Guest mode', async () => {
+    mocks.walletConnected = true;
+    mocks.walletAddress = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd';
+    mocks.chainId = 743111;
+    localStorage.setItem('worldseed:play-mode:v1', 'guest');
+    mocks.loadGuestSave.mockResolvedValue({ kind: 'empty' });
+    mocks.saveGuestSave.mockResolvedValue(undefined);
+    render(<LivingIslandGame />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /0xabcd…abcd/ }));
+
+    expect(mocks.clearAuthSession).toHaveBeenCalledOnce();
+    expect(mocks.disconnect).toHaveBeenCalledOnce();
+  });
+
   it('defaults fresh production visitors to Live, keeps local development on Guest, and respects explicit preferences', () => {
     expect(initialLivingIslandMode(null, true, true)).toBe('verified');
     expect(initialLivingIslandMode(null, false, true)).toBe('guest');

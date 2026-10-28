@@ -11,7 +11,7 @@ import { useStartRunFlow } from '../v3/hooks/useStartRunFlow';
 import { useV3Auth } from '../v3/hooks/useV3Auth';
 import { useV3Run } from '../v3/hooks/useV3Run';
 import { useV3Settlement } from '../v3/hooks/useV3Settlement';
-import type { V3UpgradeKind } from '../v3/types';
+import type { V3RewardRules, V3UpgradeKind } from '../v3/types';
 import { TARGET_CHAIN_ID } from '../blockchain/config';
 import './V3IntegrationShell.css';
 
@@ -22,6 +22,9 @@ export interface V3LivingProfile {
   ready: boolean;
   seasonalPP: string;
   seasonalCP: string;
+  rewardRules: V3RewardRules | null;
+  totalSeasonCP: string | null;
+  maxSeasonPoints: string | null;
   lifetimeCP: string;
   lifetimeNature: string;
   accumulatedScore: string;
@@ -219,6 +222,9 @@ function VerifiedProgression({
     ready: Boolean(runState.canAccessV3 && !runState.loading),
     seasonalPP: runState.seasonalPP.toString(),
     seasonalCP: runState.seasonalCP.toString(),
+    rewardRules: runState.rewardRules ?? null,
+    totalSeasonCP: runState.totalSeasonCP?.toString() ?? null,
+    maxSeasonPoints: runState.maxSeasonPoints?.toString() ?? null,
     lifetimeCP: runState.lifetimeCP.toString(),
     lifetimeNature: runState.lifetimeNatureCollectedAtoms.toString(),
     accumulatedScore: runState.totalAccumulatedRebirthScore.toString(),
@@ -247,8 +253,11 @@ function VerifiedProgression({
     runState.nextCpMilestoneTier,
     runState.rebirthThresholdTier,
     runState.runId,
+    runState.rewardRules,
     runState.seasonalAccumulatedRebirthScore,
     runState.seasonalCP,
+    runState.totalSeasonCP,
+    runState.maxSeasonPoints,
     runState.seasonalHighScoreTier,
     runState.seasonalPP,
     runState.seasonRebirths,

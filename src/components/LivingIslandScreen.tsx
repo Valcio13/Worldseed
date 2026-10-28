@@ -32,6 +32,7 @@ import {
 import type { V3IslandSnapshot } from '../v3/components/V3VerifiedGameplay';
 import type { V3IslandActionHandlers } from '../v3/components/V3VerifiedGameplay';
 import { V3_UPGRADE_CONFIG, type V3UpgradeKind } from '../v3/types';
+import { calculateV3RebirthRewardPreview } from '../v3/rebirthRewardPreview';
 import type { V3LivingProfile, V3LivingSettlementControls } from './V3IntegrationShell';
 
 type HabitatUpgradeState = 'locked' | 'available' | 'unaffordable' | 'purchased';
@@ -274,6 +275,24 @@ function VerifiedIslandPanel({
   const scoreTier = island?.scoreTier ?? 0;
   const rebirthGoal = profile?.rebirthThresholdTier ?? 0;
   const progress = rebirthGoal > 0 ? Math.min(100, (scoreTier / rebirthGoal) * 100) : 0;
+  const rewardPreview =
+    island && profile?.ready && profile.rewardRules &&
+    profile.totalSeasonCP !== null && profile.totalSeasonCP !== undefined &&
+    profile.maxSeasonPoints !== null && profile.maxSeasonPoints !== undefined
+      ? calculateV3RebirthRewardPreview({
+          scoreTier,
+          seasonalHighScoreTier: profile.seasonalHighScoreTier,
+          seasonalPP: BigInt(profile.seasonalPP),
+          seasonalCP: BigInt(profile.seasonalCP),
+          totalSeasonCP: BigInt(profile.totalSeasonCP),
+          lifetimeCP: BigInt(profile.lifetimeCP),
+          maxSeasonPoints: BigInt(profile.maxSeasonPoints),
+          rules: profile.rewardRules,
+        })
+      : null;
+  const hasEligibleRewardPreview = Boolean(
+    rewardPreview && rebirthGoal > 0 && scoreTier >= rebirthGoal,
+  );
   const canRebirth = Boolean(
     island && profile?.activeRun && profile.authenticated && settlement?.canSettle &&
       !settlement.pending && rebirthGoal > 0 && scoreTier >= rebirthGoal,
@@ -327,12 +346,28 @@ function VerifiedIslandPanel({
           </p>
         )}
         <div className="living-rebirth-reward">
+          <span>Settled balances</span>
           Seasonal PP <strong>{profile?.ready ? profile.seasonalPP : '—'}</strong>
           <span>·</span>
           Seasonal CP <strong>{profile?.ready ? profile.seasonalCP : '—'}</strong>
-          <span>·</span>
-          Next CP milestone <strong>{profile?.ready ? profile.nextCpMilestoneTier ?? '—' : '—'}</strong>
         </div>
+        <div className="living-rebirth-reward">
+          {hasEligibleRewardPreview ? 'Next CP milestone after Rebirth' : 'Next CP milestone'}{' '}
+          <strong>{profile?.ready
+            ? hasEligibleRewardPreview
+              ? rewardPreview?.nextCpMilestoneTier ?? '—'
+              : profile.nextCpMilestoneTier ?? '—'
+            : '—'}</strong>
+        </div>
+        {rewardPreview && scoreTier >= rebirthGoal && (
+          <div className="living-rebirth-preview" aria-label="Estimated Rebirth rewards">
+            <span>Estimated this Rebirth</span>
+            <strong>+{rewardPreview.pp.toString()} PP · +{rewardPreview.cp.toString()} CP</strong>
+            {(rewardPreview.ppCapped || rewardPreview.cpCapped) && (
+              <small>Reward caps may limit the final amount.</small>
+            )}
+          </div>
+        )}
         <div className="living-verified-rebirth-actions">
           <button
             type="button"

@@ -42,6 +42,17 @@ export interface V3ScoreAttestation {
   actionType: V3ActionType;
 }
 
+/** Versioned on-chain values used by the verified Rebirth reward calculation. */
+export interface V3RewardRules {
+  rebirthThresholdTier: number;
+  ppStep: number;
+  ppPerRebirthCap: bigint;
+  ppBase: bigint;
+  seasonPPCap: bigint;
+  seasonCPCap: bigint;
+  cpMilestoneStep: number;
+}
+
 // Frontend State Types
 
 export interface V3RunState {
@@ -57,6 +68,12 @@ export interface V3RunState {
   seasonalPP: bigint;
   /** Player's seasonal CP */
   seasonalCP: bigint;
+  /** Current versioned reward rules for an active run (when available). */
+  rewardRules?: V3RewardRules | null;
+  /** Total CP already settled for this season across all players. */
+  totalSeasonCP?: bigint | null;
+  /** Contract-wide seasonal CP ceiling. */
+  maxSeasonPoints?: bigint | null;
   /** Best successfully settled verified score tier in this season. */
   seasonalHighScoreTier: number;
   /** Current run's versioned threshold, or active version threshold when no run is open. */
@@ -152,6 +169,10 @@ export interface V3Command extends V3PersistedCommand {
   confirmedAt?: number;
   /** Error details if failed */
   error?: string;
+  /** Number of HTTP attempts already made for this exact command envelope. */
+  attemptCount?: number;
+  /** Interrupted/transient submissions may be retried automatically after reload. */
+  autoRetryEligible?: boolean;
   /** Display info from receipt */
   creditedAtoms?: string;
   spentAtoms?: string;

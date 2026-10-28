@@ -851,6 +851,8 @@ describe('useV3Commands persistence and verifier behavior', () => {
     const submitSpy = vi
       .spyOn(v3Api, 'submitCommand')
       .mockRejectedValueOnce(new TypeError('network disconnected'))
+      .mockRejectedValueOnce(new TypeError('network disconnected'))
+      .mockRejectedValueOnce(new TypeError('network disconnected'))
       .mockImplementationOnce(async (_run, envelope) => receipt(envelope.commandId, 1));
     const { result } = renderHook(() => useV3Commands(runId, token));
     const command = { type: 'buy-temporary-upgrade', upgrade: 'deep-roots' } as const;
@@ -870,9 +872,67 @@ describe('useV3Commands persistence and verifier behavior', () => {
       await result.current.retryCommand(originalId);
     });
 
-    expect(submitSpy).toHaveBeenCalledTimes(2);
+    expect(submitSpy).toHaveBeenCalledTimes(4);
     expect(submitSpy.mock.calls[1][1]).toEqual(submitSpy.mock.calls[0][1]);
+    expect(submitSpy.mock.calls[2][1]).toEqual(submitSpy.mock.calls[0][1]);
+    expect(submitSpy.mock.calls[3][1]).toEqual(submitSpy.mock.calls[0][1]);
     expect(result.current.state?.commands[0].status).toBe('confirmed');
+  });
+
+  it('automatically retries transient submission failures with the identical envelope', async () => {
+    const submitSpy = vi.spyOn(v3Api, 'submitCommand')
+      .mockRejectedValueOnce(new TypeError('network disconnected'))
+      .mockRejectedValueOnce(new V3ApiError('Verifier unavailable', 'VERIFIER_UNAVAILABLE', 503))
+      .mockImplementationOnce(async (_run, envelope) => receipt(envelope.commandId, 1));
+    const { result } = renderHook(() => useV3Commands(runId, token));
+    const command = { type: 'buy-habitat', habitat: 'water', quantity: 1 } as const;
+
+    await act(async () => {
+      await result.current.submitCommand(command);
+    });
+
+    expect(submitSpy).toHaveBeenCalledTimes(3);
+    expect(submitSpy.mock.calls[1][1]).toEqual(submitSpy.mock.calls[0][1]);
+    expect(submitSpy.mock.calls[2][1]).toEqual(submitSpy.mock.calls[0][1]);
+    expect(result.current.state?.commands[0].status).toBe('confirmed');
+  });
+
+  it('does not retry or expose manual retry for a definitive verifier rejection', async () => {
+    const submitSpy = vi.spyOn(v3Api, 'submitCommand').mockRejectedValue(
+      new V3ApiError('Command payload is invalid', 'UNRECOGNIZED_VALIDATION_ERROR', 422),
+    );
+    const { result } = renderHook(() => useV3Commands(runId, token));
+
+    await act(async () => {
+      await expect(result.current.submitCommand({ type: 'buy-habitat', habitat: 'water', quantity: 1 }))
+        .rejects.toThrow('Command payload is invalid');
+    });
+
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.state?.commands[0]).toMatchObject({
+      status: 'failed',
+      autoRetryEligible: false,
+    });
+    await expect(result.current.retryCommand(result.current.state!.commands[0].commandId))
+      .rejects.toThrow('Only uncertain commands can be retried safely');
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists the in-flight and confirmed queue snapshots once each without duplicate effect writes', async () => {
+    const originalSetItem = Storage.prototype.setItem;
+    const writeSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      return originalSetItem.call(this, key, value);
+    });
+    vi.spyOn(v3Api, 'submitCommand').mockImplementation(async (_run, envelope) => receipt(envelope.commandId, 1));
+    const { result } = renderHook(() => useV3Commands(runId, token));
+    await waitFor(() => expect(result.current.state?.cursor.runId).toBe(runId));
+    writeSpy.mockClear();
+
+    await act(async () => {
+      await result.current.submitCommand({ type: 'buy-habitat', habitat: 'water', quantity: 1 });
+    });
+
+    expect(writeSpy).toHaveBeenCalledTimes(2);
   });
 
   it('recovers a cursor conflict and leaves a rejected purchase failed without advancing it', async () => {
@@ -998,6 +1058,34 @@ describe('useV3Commands persistence and verifier behavior', () => {
     expect(submitSpy.mock.calls[1][1]).toEqual(firstEnvelope);
     expect(reloaded.result.current.state?.commands[0].status).toBe('confirmed');
     releaseFirst(receipt(firstEnvelope.commandId, 1));
+  });
+
+  it('automatically resumes a persisted interrupted envelope after refresh', async () => {
+    const key = `worldseed:v3:command-queue:${runId}`;
+    const pending = {
+      commandId: 'interrupted-wallet-action',
+      payload: { type: 'buy-habitat', habitat: 'water', quantity: 1 },
+      expectedSequence: 0,
+      submittedAt: Date.now(),
+      attemptCount: 1,
+      status: 'pending',
+    };
+    window.localStorage.setItem(key, JSON.stringify({
+      commands: [pending],
+      cursor: { runId, currentSequence: 0, expectedSequence: 0, rulesVersion: 1 },
+      queuedHeartClicks: 0,
+    }));
+    const submitSpy = vi.spyOn(v3Api, 'submitCommand')
+      .mockImplementation(async (_run, envelope) => receipt(envelope.commandId, 1));
+    const { result } = renderHook(() => useV3Commands(runId, 'reauthenticated-token'));
+
+    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1), { timeout: 2_000 });
+    expect(submitSpy.mock.calls[0][1]).toEqual({
+      commandId: pending.commandId,
+      expectedSequence: 0,
+      command: pending.payload,
+    });
+    await waitFor(() => expect(result.current.state?.commands[0].status).toBe('confirmed'));
   });
 
   it('recovers queued purchases after refresh behind the same uncertain command', async () => {

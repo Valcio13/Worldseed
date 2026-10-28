@@ -22,6 +22,8 @@ import type { V3ApiError } from '../api';
 const HEART_BATCH_DELAY_MS = 1_500;
 const MAX_HEART_BATCH = 100;
 const MAX_QUEUED_HEART_CLICKS = 1_000;
+const MAX_AUTOMATIC_ATTEMPTS = 3;
+const RETRY_BACKOFF_MS = [300, 900] as const;
 
 function heartClickQuantity(command: V3GameplayCommand): number {
   return command.type === 'heart-click' ? (command.quantity ?? 1) : 0;
@@ -67,6 +69,8 @@ function isPersistedQueue(value: unknown, runId: string): value is V3CommandQueu
         command.expectedSequence >= 0 &&
         Number.isFinite(command.submittedAt) &&
         (command.notBefore === undefined || Number.isFinite(command.notBefore)) &&
+        (command.attemptCount === undefined || (Number.isSafeInteger(command.attemptCount) && command.attemptCount >= 0)) &&
+        (command.autoRetryEligible === undefined || typeof command.autoRetryEligible === 'boolean') &&
         ['queued', 'pending', 'confirmed', 'failed', 'uncertain'].includes(command.status) &&
         !!command.payload &&
         typeof command.payload === 'object' &&
@@ -104,6 +108,8 @@ function loadQueue(runId: string, sessionToken: string): V3CommandQueueState {
           ? {
               ...command,
               status: 'uncertain',
+              attemptCount: Math.min((command.attemptCount ?? 1) + 1, MAX_AUTOMATIC_ATTEMPTS + 1),
+              autoRetryEligible: (command.attemptCount ?? 1) < MAX_AUTOMATIC_ATTEMPTS,
               error: 'Submission was interrupted; retry the same command.',
             }
           : command,
@@ -117,9 +123,15 @@ function loadQueue(runId: string, sessionToken: string): V3CommandQueueState {
   }
 }
 
-function persistQueue(state: V3CommandQueueState): boolean {
+interface QueuePersistenceCache {
+  serialized: string | null;
+  state: V3CommandQueueState | null;
+}
+
+function persistQueue(state: V3CommandQueueState, cache?: QueuePersistenceCache): boolean {
   try {
     if (typeof window === 'undefined') return false;
+    if (cache?.state === state) return true;
     const persisted = {
       commands: state.commands,
       cursor: state.cursor,
@@ -128,10 +140,60 @@ function persistQueue(state: V3CommandQueueState): boolean {
       heartQueueBlocked: state.heartQueueBlocked ?? false,
       ...(state.recoveryError ? { recoveryError: state.recoveryError } : {}),
     };
-    window.localStorage.setItem(storageKey(state.cursor.runId), JSON.stringify(persisted));
+    const serialized = JSON.stringify(persisted);
+    if (cache?.serialized === serialized) {
+      cache.state = state;
+      return true;
+    }
+    window.localStorage.setItem(storageKey(state.cursor.runId), serialized);
+    if (cache) {
+      cache.serialized = serialized;
+      cache.state = state;
+    }
     return true;
   } catch {
     return false;
+  }
+}
+
+function isTransientSubmissionError(error: unknown): boolean {
+  if (isV3ApiError(error))
+    return [408, 425, 429].includes(error.status) || error.status >= 500 || error.code === 'VERIFIER_UNAVAILABLE';
+  if (error instanceof TypeError) return true; // fetch network failure
+  return error instanceof Error && ['AbortError', 'TimeoutError', 'NetworkError'].includes(error.name);
+}
+
+function isDefinitiveSubmissionRejection(error: unknown): boolean {
+  if (!isV3ApiError(error) || error.status < 400 || error.status >= 500) return false;
+  if ([408, 425, 429].includes(error.status)) return false;
+  // These responses can indicate that the server committed but the client did not
+  // receive a usable receipt, or that the session must be refreshed first.
+  return !['UNAUTHENTICATED', 'PERSISTENCE_CONFLICT', 'RECOVERY_FAILED'].includes(error.code);
+}
+
+function retryDelay(attemptCount: number): number {
+  return RETRY_BACKOFF_MS[Math.min(Math.max(attemptCount - 2, 0), RETRY_BACKOFF_MS.length - 1)];
+}
+
+function waitForRetry(ms: number): Promise<void> {
+  return new Promise(resolve => window.setTimeout(resolve, ms));
+}
+
+async function submitWithAutomaticRetries<T>(
+  submit: () => Promise<T>,
+  startingAttempt: number,
+  onRetry: (attemptCount: number, error: unknown) => void,
+): Promise<T> {
+  let attemptCount = startingAttempt;
+  while (true) {
+    try {
+      return await submit();
+    } catch (error) {
+      if (!isTransientSubmissionError(error) || attemptCount >= MAX_AUTOMATIC_ATTEMPTS) throw error;
+      attemptCount += 1;
+      onRetry(attemptCount, error);
+      await waitForRetry(retryDelay(attemptCount));
+    }
   }
 }
 
@@ -200,6 +262,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
   );
   const stateRef = useRef(state);
   stateRef.current = state;
+  const persistedQueueCache = useRef<QueuePersistenceCache>({ serialized: null, state: null });
   const commitState = useCallback((
     update:
       | V3CommandQueueState
@@ -218,7 +281,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
   }, [commitState, runId, sessionToken]);
 
   useEffect(() => {
-    if (state && state.cursor.runId === runId) persistQueue(state);
+    if (state && state.cursor.runId === runId) persistQueue(state, persistedQueueCache.current);
   }, [state, runId]);
 
   /**
@@ -314,6 +377,8 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         payload,
         expectedSequence: currentState.cursor.expectedSequence,
         submittedAt: Date.now(),
+        attemptCount: 1,
+        autoRetryEligible: true,
         status: 'pending',
       };
 
@@ -322,7 +387,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         ...currentState,
         commands: existingQueued
           ? currentState.commands.map((item) => item.commandId === commandId
-              ? { ...item, expectedSequence: currentState.cursor.expectedSequence, status: 'pending' as const, submittedAt: Date.now() }
+              ? { ...item, expectedSequence: currentState.cursor.expectedSequence, status: 'pending' as const, submittedAt: Date.now(), attemptCount: 1, autoRetryEligible: true }
               : item)
           : [...currentState.commands, persistedCommand],
         queuedHeartClicks: currentState.queuedHeartClicks - consumeQueuedHeart,
@@ -331,27 +396,38 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
           : null,
         isSubmitting: true,
       };
-      if (!persistQueue(queuedState)) {
+      if (!persistQueue(queuedState, persistedQueueCache.current)) {
         submitting.current = false;
         throw new Error('Unable to save the command locally; nothing was sent.');
       }
       commitState(queuedState);
 
+      let attemptCount = 1;
       try {
-        // Submit with exact command ID and expected sequence
-        const receipt = await v3Api.submitCommand(
-          runId,
-          {
-            commandId,
-            expectedSequence: persistedCommand.expectedSequence,
-            command: payload,
+        const envelope = {
+          commandId,
+          expectedSequence: persistedCommand.expectedSequence,
+          command: payload,
+        };
+        const receipt = await submitWithAutomaticRetries(
+          () => v3Api.submitCommand(runId, envelope, sessionToken),
+          attemptCount,
+          (nextAttemptCount, retryError) => {
+            attemptCount = nextAttemptCount;
+            commitState((prev) => prev ? {
+              ...prev,
+              commands: prev.commands.map(item => item.commandId === commandId
+                ? { ...item, attemptCount: nextAttemptCount, autoRetryEligible: true,
+                    error: retryError instanceof Error ? retryError.message : 'Temporary network interruption.' }
+                : item),
+            } : null);
           },
-          sessionToken,
         );
 
         assertReceiptMatches(receipt, commandId, persistedCommand.expectedSequence, runId);
 
         // Update state with receipt and advance cursor
+        submitting.current = false;
         commitState((prev) => {
           if (!prev) return null;
           const commands = prev.commands.map((c) =>
@@ -359,6 +435,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
               ? {
                   ...c,
                   status: 'confirmed' as const,
+                  autoRetryEligible: false,
                   confirmedAt: Date.now(),
                   receipt,
                   creditedAtoms: receipt.creditedAtoms,
@@ -521,8 +598,12 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
               status = 'uncertain';
               break;
           }
+          // Treat any other non-retryable 4xx as a definitive rejection. This
+          // prevents unknown verifier validation errors from entering retry paths.
+          if (isDefinitiveSubmissionRejection(apiError)) status = 'failed';
         }
 
+        submitting.current = false;
         commitState((prev) => {
           if (!prev) return null;
           const queueRejected = Boolean(queuedCommandId && status === 'failed');
@@ -545,6 +626,8 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
                     ...c,
                     status,
                     error: errorMsg,
+                    attemptCount,
+                    autoRetryEligible: status === 'uncertain' && isTransientSubmissionError(error) && attemptCount < MAX_AUTOMATIC_ATTEMPTS,
                   }
                 : queueRejected && c.status === 'queued'
                   ? { ...c, status: 'failed' as const, error: 'Not sent because an earlier action was rejected.' }
@@ -556,7 +639,6 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         throw error;
       } finally {
         submitting.current = false;
-        commitState((prev) => prev ? { ...prev } : null);
       }
     },
     [commitState, runId, sessionToken],
@@ -567,7 +649,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
    * Uses same command ID and payload for idempotency
    */
   const retryCommand = useCallback(
-    async (commandId: string) => {
+    async (commandId: string, automatic = false) => {
       const currentState = stateRef.current;
       if (!currentState || !runId || !sessionToken) {
         throw new Error('Command queue not initialized or session expired');
@@ -581,7 +663,9 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       if (command.status !== 'uncertain') {
         throw new Error('Only uncertain commands can be retried safely');
       }
+      if (automatic && (!command.autoRetryEligible || (command.attemptCount ?? 1) > MAX_AUTOMATIC_ATTEMPTS)) return;
       submitting.current = true;
+      let attemptCount = automatic ? command.attemptCount ?? 1 : 1;
 
       // Reset to pending
       commitState((prev) =>
@@ -590,7 +674,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
               ...prev,
               commands: prev.commands.map((c) =>
                 c.commandId === commandId
-                  ? { ...c, status: 'pending' as const, error: undefined }
+                  ? { ...c, status: 'pending' as const, attemptCount, autoRetryEligible: true, error: undefined }
                   : c,
               ),
               isSubmitting: true,
@@ -599,20 +683,30 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       );
 
       try {
-        // Resubmit with same command ID (idempotent)
-        const receipt = await v3Api.submitCommand(
-          runId,
-          {
-            commandId,
-            expectedSequence: command.expectedSequence,
-            command: command.payload,
+        const envelope = {
+          commandId,
+          expectedSequence: command.expectedSequence,
+          command: command.payload,
+        };
+        const receipt = await submitWithAutomaticRetries(
+          () => v3Api.submitCommand(runId, envelope, sessionToken),
+          attemptCount,
+          (nextAttemptCount, retryError) => {
+            attemptCount = nextAttemptCount;
+            commitState((prev) => prev ? {
+              ...prev,
+              commands: prev.commands.map(item => item.commandId === commandId
+                ? { ...item, attemptCount, autoRetryEligible: true,
+                    error: retryError instanceof Error ? retryError.message : 'Temporary network interruption.' }
+                : item),
+            } : null);
           },
-          sessionToken,
         );
 
         assertReceiptMatches(receipt, commandId, command.expectedSequence, runId);
 
         // Update with receipt
+        submitting.current = false;
         commitState((prev) => {
           if (!prev) return null;
           return {
@@ -628,6 +722,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
                 ? {
                     ...c,
                     status: 'confirmed',
+                    autoRetryEligible: false,
                     confirmedAt: Date.now(),
                     receipt,
                     creditedAtoms: receipt.creditedAtoms,
@@ -665,11 +760,11 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         }
 
         // Update error status
+        submitting.current = false;
         commitState((prev) => {
           if (!prev) return null;
           const status: 'uncertain' | 'failed' =
-            apiError &&
-            [
+            isDefinitiveSubmissionRejection(error) || Boolean(apiError && [
               'REQUEST_REJECTED',
               'RUN_NOT_FOUND',
               'RUN_NOT_ACTIVE',
@@ -678,7 +773,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
               'COMMAND_ID_CONFLICT',
               'STALE_CURSOR',
               'SEQUENCE_GAP',
-            ].includes(apiError.code)
+            ].includes(apiError.code))
               ? 'failed'
               : 'uncertain';
           const queueRejected = status === 'failed' && prev.commands.some(c => c.status === 'queued');
@@ -692,6 +787,8 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
                     ...c,
                     status,
                     error: error instanceof Error ? error.message : 'Unknown error',
+                    attemptCount,
+                    autoRetryEligible: status === 'uncertain' && isTransientSubmissionError(error) && attemptCount < MAX_AUTOMATIC_ATTEMPTS,
                   }
                 : queueRejected && c.status === 'queued'
                   ? { ...c, status: 'failed' as const, error: 'Not sent because an earlier action was rejected.' }
@@ -703,7 +800,6 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         throw error;
       } finally {
         submitting.current = false;
-        commitState((prev) => prev ? { ...prev } : null);
       }
     },
     [commitState, runId, sessionToken],
@@ -743,7 +839,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         ? Date.now() + HEART_BATCH_DELAY_MS
         : current.heartBatchDueAt ?? Date.now() + HEART_BATCH_DELAY_MS,
     };
-    if (!persistQueue(next)) return false;
+    if (!persistQueue(next, persistedQueueCache.current)) return false;
     commitState(next);
     return true;
   }, [commitState, runId, sessionToken]);
@@ -784,7 +880,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         status: 'queued',
       }],
     };
-    if (!persistQueue(next)) return false;
+    if (!persistQueue(next, persistedQueueCache.current)) return false;
     commitState(next);
     return true;
   }, [commitState, runId, sealHeartBuffer, sessionToken]);
@@ -799,14 +895,14 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       heartQueueBlocked: false,
       commands: current.commands.filter((command) => command.status !== 'failed'),
     };
-    if (persistQueue(next)) commitState(next);
+    if (persistQueue(next, persistedQueueCache.current)) commitState(next);
   }, [commitState]);
 
   const flushPendingCommands = useCallback(async () => {
     const current = stateRef.current;
     if (current?.queuedHeartClicks) {
       const next = sealHeartBuffer(current);
-      if (!persistQueue(next)) throw new Error('Unable to save pending Live actions locally.');
+      if (!persistQueue(next, persistedQueueCache.current)) throw new Error('Unable to save pending Live actions locally.');
       commitState(next);
     }
     const deadline = Date.now() + 30_000;
@@ -841,10 +937,25 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       const next = sealHeartBuffer({ ...current, queuedHeartClicks: quantity });
       const remainder = current.queuedHeartClicks - quantity;
       const withRemainder = { ...next, queuedHeartClicks: remainder, heartBatchDueAt: remainder > 0 ? Date.now() + HEART_BATCH_DELAY_MS : null };
-      if (persistQueue(withRemainder)) commitState(withRemainder);
+      if (persistQueue(withRemainder, persistedQueueCache.current)) commitState(withRemainder);
     }, Math.max(0, dueAt - Date.now()));
     return () => window.clearTimeout(timer);
   }, [commitState, sealHeartBuffer, state]);
+
+  // Resume an interrupted transient command with the same persisted envelope after reload.
+  useEffect(() => {
+    if (!state || state.heartQueueBlocked || state.isSubmitting || state.recoveringCursor || submitting.current) return;
+    if (state.commands.some(command => command.status === 'pending')) return;
+    const interrupted = state.commands.find(command =>
+      command.status === 'uncertain' && command.autoRetryEligible &&
+      (command.attemptCount ?? 1) <= MAX_AUTOMATIC_ATTEMPTS,
+    );
+    if (!interrupted) return;
+    const timer = window.setTimeout(() => {
+      void retryCommand(interrupted.commandId, true).catch(() => undefined);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [retryCommand, state]);
 
   // Submit the head of the persisted ordered journal, one verifier sequence at a time.
   useEffect(() => {

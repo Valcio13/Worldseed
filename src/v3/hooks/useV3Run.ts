@@ -21,6 +21,9 @@ const emptyRunState: V3RunState = {
   seasonId: 0n,
   seasonalPP: 0n,
   seasonalCP: 0n,
+  rewardRules: null,
+  totalSeasonCP: null,
+  maxSeasonPoints: null,
   seasonalHighScoreTier: 0,
   rebirthThresholdTier: 0,
   nextCpMilestoneTier: null,
@@ -150,6 +153,21 @@ export function useV3Run() {
     query: {
       enabled: canAccessV3 && !!seasonIdData.data,
     },
+  });
+
+  const totalSeasonCPData = useReadContract({
+    address: v3ContractAddress,
+    abi: v3ContractAbi,
+    functionName: 'totalSeasonCP',
+    args: seasonIdData.data !== undefined ? [seasonIdData.data] : undefined,
+    query: { enabled: canAccessV3 && seasonIdData.data !== undefined },
+  });
+
+  const maxSeasonPointsData = useReadContract({
+    address: v3ContractAddress,
+    abi: v3ContractAbi,
+    functionName: 'MAX_SEASON_POINTS',
+    query: { enabled: canAccessV3 },
   });
 
   const seasonalHighScoreData = useReadContract({
@@ -310,6 +328,19 @@ export function useV3Run() {
       newState.seasonId = seasonIdData.data || 0n;
       newState.seasonalPP = seasonalPPData.data || 0n;
       newState.seasonalCP = seasonalCPData.data || 0n;
+      newState.rewardRules = rewardRulesData.data
+        ? {
+            rebirthThresholdTier: Number(rewardRulesData.data[0]),
+            ppStep: Number(rewardRulesData.data[1]),
+            ppPerRebirthCap: BigInt(rewardRulesData.data[2]),
+            ppBase: BigInt(rewardRulesData.data[3]),
+            seasonPPCap: BigInt(rewardRulesData.data[4]),
+            seasonCPCap: BigInt(rewardRulesData.data[5]),
+            cpMilestoneStep: Number(rewardRulesData.data[7]),
+          }
+        : null;
+      newState.totalSeasonCP = totalSeasonCPData.data ?? null;
+      newState.maxSeasonPoints = maxSeasonPointsData.data ?? null;
       const seasonalHighScoreTier = Number(seasonalHighScoreData.data ?? 0);
       const rebirthThresholdTier = Number(rewardRulesData.data?.[0] ?? 0);
       const cpMilestoneStep = Number(rewardRulesData.data?.[7] ?? 7);
@@ -330,7 +361,12 @@ export function useV3Run() {
         seasonIdData.isLoading ||
         activeRulesVersionData.isLoading ||
         rewardRulesData.isLoading ||
-        seasonalHighScoreData.isLoading;
+        seasonalHighScoreData.isLoading ||
+        seasonalPPData.isLoading ||
+        seasonalCPData.isLoading ||
+        totalSeasonCPData.isLoading ||
+        maxSeasonPointsData.isLoading ||
+        lifetimeCPData.isLoading;
       newState.loading ||= lifetimeNatureCollectedAtomsData.isLoading ||
         totalAccumulatedRebirthScoreData.isLoading ||
         seasonalAccumulatedRebirthScoreData.isLoading;
@@ -361,10 +397,17 @@ export function useV3Run() {
     seasonIdData.data,
     seasonIdData.isLoading,
     seasonalPPData.data,
+    seasonalPPData.isLoading,
     seasonalCPData.data,
+    seasonalCPData.isLoading,
+    totalSeasonCPData.data,
+    totalSeasonCPData.isLoading,
+    maxSeasonPointsData.data,
+    maxSeasonPointsData.isLoading,
     seasonalHighScoreData.data,
     seasonalHighScoreData.isLoading,
     lifetimeCPData.data,
+    lifetimeCPData.isLoading,
     lifetimeNatureCollectedAtomsData.data,
     lifetimeNatureCollectedAtomsData.isLoading,
     totalAccumulatedRebirthScoreData.data,
@@ -532,6 +575,8 @@ export function useV3Run() {
         rewardRulesData.refetch(),
         seasonalPPData.refetch(),
         seasonalCPData.refetch(),
+        totalSeasonCPData.refetch(),
+        maxSeasonPointsData.refetch(),
         seasonalHighScoreData.refetch(),
         lifetimeCPData.refetch(),
         lifetimeNatureCollectedAtomsData.refetch(),

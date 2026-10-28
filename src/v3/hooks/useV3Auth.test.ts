@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useV3Auth } from './useV3Auth';
+import { clearV3AuthSession, useV3Auth } from './useV3Auth';
 import { useAccount, useChainId, useSignMessage } from 'wagmi';
 import { v3Api } from '../api';
 
@@ -54,11 +54,13 @@ describe('useV3Auth', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    clearV3AuthSession();
     // Don't use fake timers to avoid hanging tests
   });
 
   afterEach(() => {
-    // Clean up any lingering timers
+    vi.useRealTimers();
+    clearV3AuthSession();
   });
 
   describe('initial state', () => {
@@ -149,6 +151,68 @@ describe('useV3Auth', () => {
         challengeId: mockChallengeId,
         signature: mockSignature,
       });
+    });
+
+    it('restores an unexpired session after the Live hook remounts without signing again', async () => {
+      vi.mocked(useAccount).mockReturnValue({ address: mockWallet } as never);
+      vi.mocked(useChainId).mockReturnValue(1);
+      const signMessageAsync = vi.fn().mockResolvedValue(mockSignature);
+      vi.mocked(useSignMessage).mockReturnValue({ signMessageAsync } as never);
+      vi.mocked(v3Api.requestChallenge).mockResolvedValue({
+        challengeId: mockChallengeId,
+        message: mockMessage,
+        expiresAtMs: Date.now() + 300000,
+      });
+      vi.mocked(v3Api.completeChallenge).mockResolvedValue({
+        sessionToken: mockSessionToken,
+        expiresAtMs: Date.now() + 900000,
+      });
+
+      const firstMount = renderHook(() => useV3Auth());
+      await act(async () => {
+        expect(await firstMount.result.current.authenticate(mockRunId)).toBe(true);
+      });
+      firstMount.unmount();
+
+      const secondMount = renderHook(() => useV3Auth());
+      expect(secondMount.result.current.isAuthenticated).toBe(true);
+      expect(secondMount.result.current.sessionToken).toBe(mockSessionToken);
+      expect(secondMount.result.current.runId).toBe(mockRunId);
+      expect(signMessageAsync).toHaveBeenCalledOnce();
+      expect(localStorage.length).toBe(0);
+      expect(window.sessionStorage.length).toBe(0);
+      act(() => secondMount.result.current.logout());
+    });
+
+    it('expires cached sessions while unmounted and requires explicit authentication again', async () => {
+      vi.useFakeTimers();
+      vi.mocked(useAccount).mockReturnValue({ address: mockWallet } as never);
+      vi.mocked(useChainId).mockReturnValue(1);
+      const signMessageAsync = vi.fn().mockResolvedValue(mockSignature);
+      vi.mocked(useSignMessage).mockReturnValue({ signMessageAsync } as never);
+      vi.mocked(v3Api.requestChallenge).mockResolvedValue({
+        challengeId: mockChallengeId,
+        message: mockMessage,
+        expiresAtMs: Date.now() + 300000,
+      });
+      vi.mocked(v3Api.completeChallenge).mockResolvedValue({
+        sessionToken: mockSessionToken,
+        expiresAtMs: Date.now() + 5000,
+      });
+
+      const firstMount = renderHook(() => useV3Auth());
+      await act(async () => {
+        expect(await firstMount.result.current.authenticate(mockRunId)).toBe(true);
+      });
+      firstMount.unmount();
+      await vi.advanceTimersByTimeAsync(5001);
+
+      const secondMount = renderHook(() => useV3Auth());
+      expect(secondMount.result.current.isAuthenticated).toBe(false);
+      expect(secondMount.result.current.sessionToken).toBeNull();
+      expect(secondMount.result.current.error).toBe('Session expired');
+      expect(signMessageAsync).toHaveBeenCalledOnce();
+      act(() => secondMount.result.current.logout());
     });
 
     it('should request challenge separately', async () => {
@@ -319,7 +383,7 @@ describe('useV3Auth', () => {
         expiresAtMs: mockExpiresAtMs,
       });
 
-      const { result } = renderHook(() => useV3Auth());
+      const { result, unmount } = renderHook(() => useV3Auth());
 
       await act(async () => {
         await result.current.authenticate(mockRunId);
@@ -335,6 +399,11 @@ describe('useV3Auth', () => {
       expect(result.current.sessionToken).toBeNull();
       expect(result.current.isAuthenticated).toBe(false);
       expect(result.current.error).toBeNull();
+
+      unmount();
+      const afterLogout = renderHook(() => useV3Auth());
+      expect(afterLogout.result.current.isAuthenticated).toBe(false);
+      expect(afterLogout.result.current.sessionToken).toBeNull();
     });
   });
 

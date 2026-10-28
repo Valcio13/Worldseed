@@ -1000,6 +1000,31 @@ describe('useV3Commands persistence and verifier behavior', () => {
     releaseFirst(receipt(firstEnvelope.commandId, 1));
   });
 
+  it('recovers queued purchases after refresh behind the same uncertain command', async () => {
+    let releaseFirst!: (value: V3CommandReceipt) => void;
+    const submitSpy = vi.spyOn(v3Api, 'submitCommand')
+      .mockImplementationOnce(() => new Promise(resolve => { releaseFirst = resolve; }))
+      .mockImplementation(async (_run, envelope) => receipt(envelope.commandId, envelope.expectedSequence + 1));
+    const first = renderHook(() => useV3Commands(runId, token));
+    act(() => { first.result.current.enqueueCommand({ type: 'buy-habitat', habitat: 'water', quantity: 1 }); });
+    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1));
+    const firstId = submitSpy.mock.calls[0][1].commandId;
+    act(() => { first.result.current.enqueueCommand({ type: 'buy-habitat', habitat: 'grass', quantity: 1 }); });
+    first.unmount();
+
+    const reloaded = renderHook(() => useV3Commands(runId, 'reauthenticated-token'));
+    await waitFor(() => expect(reloaded.result.current.state?.commands[0].status).toBe('uncertain'));
+    expect(reloaded.result.current.state?.commands[1]).toMatchObject({
+      payload: { type: 'buy-habitat', habitat: 'grass', quantity: 1 },
+      status: 'queued',
+    });
+    await act(async () => { await reloaded.result.current.retryCommand(firstId); });
+    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(3));
+    expect(submitSpy.mock.calls[1][1].commandId).toBe(firstId);
+    expect(submitSpy.mock.calls[2][1].command).toEqual({ type: 'buy-habitat', habitat: 'grass', quantity: 1 });
+    releaseFirst(receipt(firstId, 1));
+  });
+
   it('persists clicks and sends timed batches no larger than 100 in sequence', async () => {
     const submitSpy = vi
       .spyOn(v3Api, 'submitCommand')
@@ -1051,12 +1076,50 @@ describe('useV3Commands persistence and verifier behavior', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
     expect(submitSpy).toHaveBeenCalledTimes(1);
     expect(submitSpy.mock.calls[0][1].command).toEqual({ type: 'heart-click', quantity: 3 });
-    expect(result.current.state?.queuedHeartClicks).toBe(3);
+    expect(result.current.state?.queuedHeartClicks).toBe(0);
     expect(result.current.state?.heartQueueBlocked).toBe(true);
     expect(result.current.state?.commands[0].status).toBe('failed');
     await expect(result.current.flushPendingCommands()).rejects.toThrow(/rejected/);
     await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
     expect(submitSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps Heart batches and purchases in the exact accepted order', async () => {
+    const submitSpy = vi.spyOn(v3Api, 'submitCommand').mockImplementation(async (_run, envelope) =>
+      receipt(envelope.commandId, envelope.expectedSequence + 1),
+    );
+    const { result } = renderHook(() => useV3Commands(runId, token));
+    act(() => {
+      for (let i = 0; i < 50; i += 1) result.current.enqueueHeartClick();
+    });
+    act(() => { expect(result.current.enqueueCommand({ type: 'buy-habitat', habitat: 'water', quantity: 1 })).toBe(true); });
+    act(() => { for (let i = 0; i < 30; i += 1) result.current.enqueueHeartClick(); });
+    act(() => { expect(result.current.enqueueCommand({ type: 'buy-habitat', habitat: 'grass', quantity: 1 })).toBe(true); });
+
+    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(4));
+    expect(submitSpy.mock.calls.map(call => call[1].command)).toEqual([
+      { type: 'heart-click', quantity: 50 },
+      { type: 'buy-habitat', habitat: 'water', quantity: 1 },
+      { type: 'heart-click', quantity: 30 },
+      { type: 'buy-habitat', habitat: 'grass', quantity: 1 },
+    ]);
+    expect(submitSpy.mock.calls.map(call => call[1].expectedSequence)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('does not send actions after a rejected queued purchase and can discard the blocked tail', async () => {
+    const submitSpy = vi.spyOn(v3Api, 'submitCommand')
+      .mockRejectedValueOnce(new V3ApiError('Not enough Nature', 'RULES_REJECTED', 409));
+    const { result } = renderHook(() => useV3Commands(runId, token));
+    act(() => {
+      expect(result.current.enqueueCommand({ type: 'buy-habitat', habitat: 'water', quantity: 1 })).toBe(true);
+      expect(result.current.enqueueCommand({ type: 'buy-habitat', habitat: 'grass', quantity: 1 })).toBe(true);
+    });
+    await waitFor(() => expect(result.current.state?.heartQueueBlocked).toBe(true));
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.state?.commands.map(command => command.status)).toEqual(['failed', 'failed']);
+    act(() => result.current.discardQueuedHeartClicks());
+    expect(result.current.state?.heartQueueBlocked).toBe(false);
+    expect(result.current.state?.commands).toEqual([]);
   });
 
   it('restores queued Heart clicks after refresh and waits for the interrupted envelope retry', async () => {

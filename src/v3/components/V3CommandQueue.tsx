@@ -1,7 +1,7 @@
 /**
  * V3 Command Queue Component
  *
- * Displays pending, confirmed, uncertain, and failed commands.
+ * Displays queued, pending, confirmed, uncertain, and failed commands.
  */
 
 import type { V3CommandQueueState, V3Command } from '../types';
@@ -99,6 +99,14 @@ export function V3CommandQueue({
           {queueState.recoveryError}
         </p>
       )}
+      {queueState.heartQueueBlocked && queueState.queuedHeartClicks === 0 && (
+        <div className="v3-queue-heart-backlog" role="alert">
+          A command was rejected. Later actions were held back; discard them to resume.
+          {onDiscardQueuedHeartClicks && (
+            <button type="button" onClick={onDiscardQueuedHeartClicks}>Discard rejected actions</button>
+          )}
+        </div>
+      )}
       {queueState.queuedHeartClicks > 0 && (
         <div className="v3-queue-heart-backlog" role="status">
           {queueState.heartQueueBlocked
@@ -168,6 +176,10 @@ function CommandItem({ command, onRetry }: CommandItemProps) {
 
       {command.status === 'pending' && (
         <span className="v3-command-badge v3-command-badge--pending">Pending</span>
+      )}
+
+      {command.status === 'queued' && (
+        <span className="v3-command-badge v3-command-badge--pending">Queued</span>
       )}
 
       {command.status === 'confirmed' && (

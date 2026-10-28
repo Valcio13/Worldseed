@@ -29,7 +29,7 @@ function heartClickQuantity(command: V3GameplayCommand): number {
 
 function outstandingHeartClicks(state: V3CommandQueueState): number {
   return state.queuedHeartClicks + state.commands.reduce(
-    (total, command) => total + (command.status === 'pending' || command.status === 'uncertain'
+    (total, command) => total + (command.status === 'queued' || command.status === 'pending' || command.status === 'uncertain'
       ? heartClickQuantity(command.payload)
       : 0),
     0,
@@ -66,7 +66,8 @@ function isPersistedQueue(value: unknown, runId: string): value is V3CommandQueu
         Number.isSafeInteger(command.expectedSequence) &&
         command.expectedSequence >= 0 &&
         Number.isFinite(command.submittedAt) &&
-        ['pending', 'confirmed', 'failed', 'uncertain'].includes(command.status) &&
+        (command.notBefore === undefined || Number.isFinite(command.notBefore)) &&
+        ['queued', 'pending', 'confirmed', 'failed', 'uncertain'].includes(command.status) &&
         !!command.payload &&
         typeof command.payload === 'object' &&
         [
@@ -274,7 +275,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
    * Persists command before submission to enable retries
    */
   const submitCommand = useCallback(
-    async (command: V3GameplayCommand, consumeQueuedHeart = 0) => {
+    async (command: V3GameplayCommand, consumeQueuedHeart = 0, queuedCommandId?: string) => {
       const currentState = stateRef.current;
       if (!currentState || !runId || !sessionToken) {
         throw new Error('Command queue not initialized or session expired');
@@ -293,11 +294,18 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       }
       if (command.type === 'heart-click' && (!Number.isSafeInteger(heartClickQuantity(command)) || heartClickQuantity(command) < 1 || heartClickQuantity(command) > MAX_HEART_BATCH))
         throw new Error(`Heart batches must contain 1 through ${MAX_HEART_BATCH} clicks.`);
-      if (consumeQueuedHeart === 0 && currentState.queuedHeartClicks > 0)
+      if (consumeQueuedHeart === 0 && currentState.queuedHeartClicks > 0 && !queuedCommandId)
         throw new Error('Queued Heart clicks must be verified before the next action.');
       submitting.current = true;
 
-      const commandId = generateCommandId();
+      const existingQueued = queuedCommandId
+        ? currentState.commands.find((item) => item.commandId === queuedCommandId && item.status === 'queued')
+        : undefined;
+      if (queuedCommandId && (!existingQueued || JSON.stringify(existingQueued.payload) !== JSON.stringify(command))) {
+        submitting.current = false;
+        throw new Error('Queued command no longer matches the persisted action.');
+      }
+      const commandId = existingQueued?.commandId ?? generateCommandId();
 
       // Persist command before submission
       const payload = { ...command } as V3GameplayCommand;
@@ -312,7 +320,11 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
       // Save the exact envelope before the request can leave the browser.
       const queuedState = {
         ...currentState,
-        commands: [...currentState.commands, persistedCommand],
+        commands: existingQueued
+          ? currentState.commands.map((item) => item.commandId === commandId
+              ? { ...item, expectedSequence: currentState.cursor.expectedSequence, status: 'pending' as const, submittedAt: Date.now() }
+              : item)
+          : [...currentState.commands, persistedCommand],
         queuedHeartClicks: currentState.queuedHeartClicks - consumeQueuedHeart,
         heartBatchDueAt: currentState.queuedHeartClicks - consumeQueuedHeart > 0
           ? Date.now() + HEART_BATCH_DELAY_MS
@@ -362,6 +374,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
                   (c) =>
                     c.payload.type !== 'heart-click' ||
                     c.commandId === commandId ||
+                    c.status === 'queued' ||
                     c.status === 'pending' ||
                     c.status === 'uncertain',
                 )
@@ -512,6 +525,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
 
         commitState((prev) => {
           if (!prev) return null;
+          const queueRejected = Boolean(queuedCommandId && status === 'failed');
           return {
             ...prev,
             isSubmitting: false,
@@ -522,6 +536,9 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
                   heartQueueBlocked: true,
                 }
               : {}),
+            ...(queueRejected
+              ? { queuedHeartClicks: 0, heartBatchDueAt: null, heartQueueBlocked: true }
+              : {}),
             commands: prev.commands.map((c) =>
               c.commandId === commandId
                 ? {
@@ -529,6 +546,8 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
                     status,
                     error: errorMsg,
                   }
+                : queueRejected && c.status === 'queued'
+                  ? { ...c, status: 'failed' as const, error: 'Not sent because an earlier action was rejected.' }
                 : c,
             ),
           };
@@ -537,6 +556,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         throw error;
       } finally {
         submitting.current = false;
+        commitState((prev) => prev ? { ...prev } : null);
       }
     },
     [commitState, runId, sessionToken],
@@ -661,9 +681,11 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
             ].includes(apiError.code)
               ? 'failed'
               : 'uncertain';
+          const queueRejected = status === 'failed' && prev.commands.some(c => c.status === 'queued');
           return {
             ...prev,
             isSubmitting: false,
+            ...(queueRejected ? { heartQueueBlocked: true, queuedHeartClicks: 0, heartBatchDueAt: null } : {}),
             commands: prev.commands.map((c) =>
               c.commandId === commandId
                 ? {
@@ -671,6 +693,8 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
                     status,
                     error: error instanceof Error ? error.message : 'Unknown error',
                   }
+                : queueRejected && c.status === 'queued'
+                  ? { ...c, status: 'failed' as const, error: 'Not sent because an earlier action was rejected.' }
                 : c,
             ),
           };
@@ -679,6 +703,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         throw error;
       } finally {
         submitting.current = false;
+        commitState((prev) => prev ? { ...prev } : null);
       }
     },
     [commitState, runId, sessionToken],
@@ -700,7 +725,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
         ? {
             ...prev,
             commands: prev.commands.filter(
-              (c) => c.status === 'pending' || c.status === 'uncertain',
+              (c) => c.status === 'queued' || c.status === 'pending' || c.status === 'uncertain',
             ),
           }
         : null,
@@ -723,28 +748,81 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
     return true;
   }, [commitState, runId, sessionToken]);
 
+  const sealHeartBuffer = useCallback((source: V3CommandQueueState): V3CommandQueueState => {
+    if (source.queuedHeartClicks <= 0) return source;
+    const additions: V3Command[] = [];
+    let remaining = source.queuedHeartClicks;
+    const scheduledAt = Date.now();
+    while (remaining > 0) {
+      const quantity = Math.min(remaining, MAX_HEART_BATCH);
+      const batchIndex = additions.length;
+      additions.push({
+        commandId: generateCommandId(),
+        payload: { type: 'heart-click', quantity },
+        expectedSequence: source.cursor.expectedSequence,
+        submittedAt: Date.now(),
+        ...(batchIndex > 0 ? { notBefore: scheduledAt + batchIndex * HEART_BATCH_DELAY_MS } : {}),
+        status: 'queued',
+      });
+      remaining -= quantity;
+    }
+    return { ...source, commands: [...source.commands, ...additions], queuedHeartClicks: 0, heartBatchDueAt: null };
+  }, []);
+
+  /** Persist an ordinary gameplay action immediately behind any buffered Heart clicks. */
+  const enqueueCommand = useCallback((payload: V3GameplayCommand): boolean => {
+    const current = stateRef.current;
+    if (!current || !runId || !sessionToken || current.heartQueueBlocked || current.recoveringCursor) return false;
+    const ordered = sealHeartBuffer(current);
+    const next: V3CommandQueueState = {
+      ...ordered,
+      commands: [...ordered.commands, {
+        commandId: generateCommandId(),
+        payload,
+        expectedSequence: ordered.cursor.expectedSequence,
+        submittedAt: Date.now(),
+        status: 'queued',
+      }],
+    };
+    if (!persistQueue(next)) return false;
+    commitState(next);
+    return true;
+  }, [commitState, runId, sealHeartBuffer, sessionToken]);
+
   const discardQueuedHeartClicks = useCallback(() => {
     const current = stateRef.current;
     if (!current) return;
-    const next = { ...current, queuedHeartClicks: 0, heartBatchDueAt: null, heartQueueBlocked: false };
+    const next = {
+      ...current,
+      queuedHeartClicks: 0,
+      heartBatchDueAt: null,
+      heartQueueBlocked: false,
+      commands: current.commands.filter((command) => command.status !== 'failed'),
+    };
     if (persistQueue(next)) commitState(next);
   }, [commitState]);
 
   const flushPendingCommands = useCallback(async () => {
+    const current = stateRef.current;
+    if (current?.queuedHeartClicks) {
+      const next = sealHeartBuffer(current);
+      if (!persistQueue(next)) throw new Error('Unable to save pending Live actions locally.');
+      commitState(next);
+    }
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline) {
       const current = stateRef.current;
       if (!current) throw new Error('Live command queue is unavailable.');
       if (current.heartQueueBlocked)
-        throw new Error('A Heart collection was rejected. Review the pending queue before continuing.');
+        throw new Error('A Live action was rejected. Review or discard dependent queued actions before continuing.');
       if (current.commands.some((command) => command.status === 'uncertain'))
         throw new Error('A Live action needs retry or recovery before this transition.');
-      const pending = current.commands.some((command) => command.status === 'pending');
+      const pending = current.commands.some((command) => command.status === 'pending' || command.status === 'queued');
       if (!pending && current.queuedHeartClicks === 0 && !current.isSubmitting) return;
       await new Promise((resolve) => window.setTimeout(resolve, 25));
     }
     throw new Error('Live actions are still syncing. Try the transition again in a moment.');
-  }, []);
+  }, [commitState, sealHeartBuffer]);
 
   useEffect(() => {
     if (
@@ -758,16 +836,37 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
     const dueAt = state.heartBatchDueAt ?? Date.now() + HEART_BATCH_DELAY_MS;
     const quantity = Math.min(state.queuedHeartClicks, MAX_HEART_BATCH);
     const timer = window.setTimeout(() => {
-      void submitCommand({ type: 'heart-click', quantity }, quantity).catch(() => undefined);
+      const current = stateRef.current;
+      if (!current) return;
+      const next = sealHeartBuffer({ ...current, queuedHeartClicks: quantity });
+      const remainder = current.queuedHeartClicks - quantity;
+      const withRemainder = { ...next, queuedHeartClicks: remainder, heartBatchDueAt: remainder > 0 ? Date.now() + HEART_BATCH_DELAY_MS : null };
+      if (persistQueue(withRemainder)) commitState(withRemainder);
     }, Math.max(0, dueAt - Date.now()));
     return () => window.clearTimeout(timer);
-  }, [state, submitCommand]);
+  }, [commitState, sealHeartBuffer, state]);
+
+  // Submit the head of the persisted ordered journal, one verifier sequence at a time.
+  useEffect(() => {
+    if (!state || state.heartQueueBlocked || state.isSubmitting || state.recoveringCursor || submitting.current) return;
+    if (state.commands.some((command) => command.status === 'pending' || command.status === 'uncertain')) return;
+    const head = state.commands.find((command) => command.status === 'queued');
+    if (!head) return;
+    const waitMs = Math.max(0, (head.notBefore ?? 0) - Date.now());
+    if (waitMs > 0) {
+      const timer = window.setTimeout(() => {
+        commitState((previous) => previous ? { ...previous } : null);
+      }, waitMs);
+      return () => window.clearTimeout(timer);
+    }
+    void submitCommand(head.payload, 0, head.commandId).catch(() => undefined);
+  }, [commitState, state, submitCommand]);
 
   // Compute counts
   const computedState = state
     ? {
         ...state,
-        pendingCount: state.commands.filter((c) => c.status === 'pending').length,
+        pendingCount: state.commands.filter((c) => c.status === 'queued' || c.status === 'pending').length,
         confirmedCount: state.commands.filter((c) => c.status === 'confirmed').length,
         failedCount: state.commands.filter((c) => c.status === 'failed').length,
       }
@@ -776,6 +875,7 @@ export function useV3Commands(runId: string | undefined, sessionToken: string | 
   return {
     state: computedState,
     submitCommand,
+    enqueueCommand,
     retryCommand,
     recoverState,
     resolveConflict,

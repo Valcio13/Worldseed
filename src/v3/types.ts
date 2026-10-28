@@ -127,7 +127,7 @@ export const V3_UPGRADE_CONFIG: Record<V3UpgradeKind, V3UpgradeConfig> = {
 
 // Command Queue Types
 
-export type CommandStatus = 'pending' | 'confirmed' | 'failed' | 'uncertain';
+export type CommandStatus = 'queued' | 'pending' | 'confirmed' | 'failed' | 'uncertain';
 
 /** Persisted command metadata for idempotent retries */
 export interface V3PersistedCommand {
@@ -139,12 +139,14 @@ export interface V3PersistedCommand {
   expectedSequence: number;
   /** Submission timestamp */
   submittedAt: number;
+  /** Earliest time a locally queued batch may be sent. */
+  notBefore?: number;
   /** Last receipt from server (if confirmed) */
   receipt?: V3CommandReceipt;
 }
 
 export interface V3Command extends V3PersistedCommand {
-  /** Current status: pending (awaiting response), confirmed (success), uncertain (no response), failed (error) */
+  /** Current status, including locally persisted commands waiting their ordered turn. */
   status: CommandStatus;
   /** When confirmed */
   confirmedAt?: number;

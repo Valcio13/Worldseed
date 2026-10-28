@@ -22,6 +22,7 @@ const token = 'verified-session';
 const startedAtMs = Date.UTC(2026, 9, 26);
 const wallet = '0x0000000000000000000000000000000000000001' as `0x${string}`;
 const submitCommandMock = vi.fn();
+const enqueueCommandMock = vi.fn(() => true);
 const recoverStateMock = vi.fn();
 const retryCommandMock = vi.fn();
 const clearCompletedMock = vi.fn();
@@ -85,6 +86,7 @@ function renderVerified(
   useV3CommandsMock.mockReturnValue({
     state: override ?? queueState(commands),
     submitCommand: submitCommandMock,
+    enqueueCommand: enqueueCommandMock,
     retryCommand: retryCommandMock,
     recoverState: recoverStateMock,
     clearCompleted: clearCompletedMock,
@@ -185,6 +187,27 @@ describe('verified Living Island adapter', () => {
     await waitFor(() => expect(snapshotChangeMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ nature: '100', estimatedNature: '102', pendingHeartClicks: 2 }),
     ));
+  });
+
+  it('projects queued Heart clicks and habitat purchases in order for the island view', async () => {
+    const queued = queueState([
+      {
+        commandId: 'heart-pending', payload: { type: 'heart-click', quantity: 2 },
+        expectedSequence: 0, submittedAt: Date.now(), status: 'queued',
+      },
+      {
+        commandId: 'water-pending', payload: { type: 'buy-habitat', habitat: 'water', quantity: 1 },
+        expectedSequence: 1, submittedAt: Date.now(), status: 'queued',
+      },
+    ]);
+    renderVerified([], queued);
+
+    await waitFor(() => expect(snapshotChangeMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      nature: '100',
+      estimatedNature: '92',
+      productionPerSecond: expect.not.stringMatching(/^0$/),
+      habitats: expect.arrayContaining([expect.objectContaining({ id: 'water', level: 1 })]),
+    })));
   });
 
   it('stops the passive Nature estimate at the run season boundary', async () => {
@@ -289,7 +312,7 @@ describe('verified Living Island adapter', () => {
       habitats: expect.arrayContaining([expect.objectContaining({ id: 'water', level: 2 })]),
     }));
     handlers.buyHabitat('water', 1);
-    await waitFor(() => expect(submitCommandMock).toHaveBeenCalledWith({
+    await waitFor(() => expect(enqueueCommandMock).toHaveBeenCalledWith({
       type: 'buy-habitat', habitat: 'water', quantity: 1,
     }));
   });
@@ -359,7 +382,7 @@ describe('verified Living Island adapter', () => {
       buyProductionUpgrade: expect.any(Function),
     })));
     actionHandlersReadyMock.mock.calls.at(-1)?.[0].buyProductionUpgrade('water');
-    await waitFor(() => expect(submitCommandMock).toHaveBeenCalledWith({
+    await waitFor(() => expect(enqueueCommandMock).toHaveBeenCalledWith({
       type: 'buy-habitat-production-upgrade',
       habitat: 'water',
       milestone: 10,
@@ -401,7 +424,7 @@ describe('verified Living Island adapter', () => {
     renderVerified([rejected], blockedQueue);
 
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Season expired.'));
-    const discard = screen.getByRole('button', { name: 'Discard rejected clicks and continue' });
+    const discard = screen.getByRole('button', { name: 'Discard rejected actions and continue' });
     fireEvent.click(discard);
     expect(discardQueuedHeartClicksMock).toHaveBeenCalledOnce();
   });

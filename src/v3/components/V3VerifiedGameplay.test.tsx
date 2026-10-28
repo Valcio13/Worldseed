@@ -12,7 +12,6 @@ import { serializeCanonicalRun as serializeVersionedCanonicalRun } from '../../i
 import type { V3CommandQueueState } from '../types';
 import { V3VerifiedGameplay } from './V3VerifiedGameplay';
 import { parseV3CanonicalState } from '../canonicalState';
-import * as islandAudio from '../../game/sound';
 
 const { useV3CommandsMock } = vi.hoisted(() => ({ useV3CommandsMock: vi.fn() }));
 vi.mock('../hooks/useV3Commands', () => ({ useV3Commands: useV3CommandsMock }));
@@ -25,6 +24,8 @@ const submitCommandMock = vi.fn();
 const recoverStateMock = vi.fn();
 const retryCommandMock = vi.fn();
 const clearCompletedMock = vi.fn();
+const snapshotChangeMock = vi.fn();
+const heartActionReadyMock = vi.fn();
 
 function canonicalState(): CanonicalRunState {
   const base = createCanonicalRun({
@@ -78,7 +79,14 @@ function renderVerified(commands: V3CommandQueueState['commands'] = []) {
     recoverState: recoverStateMock,
     clearCompleted: clearCompletedMock,
   });
-  return render(<V3VerifiedGameplay runId={runId} sessionToken={token} />);
+  return render(
+    <V3VerifiedGameplay
+      runId={runId}
+      sessionToken={token}
+      onSnapshotChange={snapshotChangeMock}
+      onHeartActionReady={heartActionReadyMock}
+    />,
+  );
 }
 
 beforeEach(() => {
@@ -102,15 +110,23 @@ describe('verified Living Island adapter', () => {
   });
 
   it('loads verifier state and routes Heart clicks as verified commands', async () => {
-    const playSound = vi.spyOn(islandAudio, 'playIslandSound');
     renderVerified();
-    expect(await screen.findByTestId('verified-nature')).toHaveTextContent('100');
-    expect(screen.getByTestId('verified-production')).toHaveTextContent('0 / sec');
+    await waitFor(() =>
+      expect(snapshotChangeMock).toHaveBeenLastCalledWith({
+        nature: '100',
+        earnedNature: '100',
+        productionPerSecond: '0',
+        visualHabitatLevelCount: 0,
+        scoreTier: 0,
+      }),
+    );
     expect(recoverStateMock).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Verified Heart click' }));
+    await waitFor(() => expect(heartActionReadyMock).toHaveBeenLastCalledWith(expect.any(Function)));
+    const heartAction = heartActionReadyMock.mock.calls.at(-1)?.[0] as (() => void) | null;
+    expect(heartAction).toBeTypeOf('function');
+    heartAction?.();
     await waitFor(() => expect(submitCommandMock).toHaveBeenCalledWith({ type: 'heart-click' }));
-    await waitFor(() => expect(playSound).toHaveBeenCalledWith('collect'));
   });
 
   it('routes habitat purchases through the verifier and displays canonical habitat levels', async () => {
@@ -165,7 +181,6 @@ describe('verified Living Island adapter', () => {
   });
 
   it('submits the canonical V2 milestone command from the available upgrade control', async () => {
-    const playSound = vi.spyOn(islandAudio, 'playIslandSound');
     const state = canonicalStateV2();
     recoverStateMock.mockResolvedValueOnce({
       cursor: { runId, sequence: 0, rulesVersion: 2 },
@@ -181,7 +196,6 @@ describe('verified Living Island adapter', () => {
       habitat: 'water',
       milestone: 10,
     }));
-    await waitFor(() => expect(playSound).toHaveBeenCalledWith('upgrade'));
   });
 
   it('shows a rejected purchase without changing verifier-accepted Nature or habitat counts', async () => {
@@ -194,7 +208,9 @@ describe('verified Living Island adapter', () => {
       error: 'Not enough Nature.',
     };
     renderVerified([failed]);
-    expect(await screen.findByTestId('verified-nature')).toHaveTextContent('100');
+    await waitFor(() =>
+      expect(snapshotChangeMock).toHaveBeenLastCalledWith(expect.objectContaining({ nature: '100' })),
+    );
     expect(screen.getByTestId('verified-habitat-water')).toHaveTextContent('0');
     expect(screen.getByText('Not enough Nature.')).toBeTruthy();
   });

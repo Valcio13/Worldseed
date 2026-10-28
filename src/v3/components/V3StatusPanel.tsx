@@ -33,6 +33,16 @@ const SCORE_TIER_LABELS: Record<number, string> = {
   100: 'Legendary',
 };
 
+const NATURE_SCALE = 1_000_000_000_000n;
+
+/** Formats contract atom values for display only; the underlying verified value stays a bigint. */
+function formatNatureAtoms(atoms: bigint): string {
+  const whole = atoms / NATURE_SCALE;
+  const fraction = (atoms % NATURE_SCALE).toString().padStart(12, '0').replace(/0+$/, '');
+  const formattedWhole = new Intl.NumberFormat().format(whole);
+  return fraction ? `${formattedWhole}.${fraction}` : formattedWhole;
+}
+
 function getScoreTierLabel(tier: number): string {
   const tiers = Object.keys(SCORE_TIER_LABELS)
     .map(Number)
@@ -107,6 +117,43 @@ export function V3StatusPanel({ runState, onRefetch }: V3StatusPanelProps) {
 
       <p className="v3-status-description">{statusInfo.description}</p>
 
+      {canAccessV3 && (
+        <dl className="v3-status-details" aria-label="Verified lifetime and season totals">
+          <div className="v3-status-item">
+            <dt>Lifetime Nature</dt>
+            <dd>{formatNatureAtoms(runState.lifetimeNatureCollectedAtoms)}</dd>
+          </div>
+          <div className="v3-status-item">
+            <dt>Accumulated Rebirth score</dt>
+            <dd>{new Intl.NumberFormat().format(runState.totalAccumulatedRebirthScore)}</dd>
+          </div>
+          <div className="v3-status-item">
+            <dt>Season PP</dt>
+            <dd>{seasonalPP.toString()}</dd>
+          </div>
+          <div className="v3-status-item">
+            <dt>Season CP</dt>
+            <dd>{seasonalCP.toString()}</dd>
+          </div>
+          <div className="v3-status-item">
+            <dt>Lifetime CP</dt>
+            <dd>{lifetimeCP.toString()}</dd>
+          </div>
+          <div className="v3-status-item">
+            <dt>Highest settled tier</dt>
+            <dd>{runState.seasonalHighScoreTier}</dd>
+          </div>
+          <div className="v3-status-item">
+            <dt>Next CP milestone</dt>
+            <dd>
+              {runState.nextCpMilestoneTier === null
+                ? 'All score milestones reached'
+                : `Tier ${runState.nextCpMilestoneTier} · CP award may be capped`}
+            </dd>
+          </div>
+        </dl>
+      )}
+
       {runId > 0n && (
         <dl className="v3-status-details">
           <div className="v3-status-item">
@@ -138,40 +185,8 @@ export function V3StatusPanel({ runState, onRefetch }: V3StatusPanelProps) {
           )}
 
           <div className="v3-status-item">
-            <dt>Season PP</dt>
-            <dd>{seasonalPP.toString()}</dd>
-          </div>
-
-          <div className="v3-status-item">
-            <dt>Season CP</dt>
-            <dd>{seasonalCP.toString()}</dd>
-          </div>
-
-          <div className="v3-status-item">
-            <dt>Lifetime CP</dt>
-            <dd>{lifetimeCP.toString()}</dd>
-          </div>
-
-          <div className="v3-status-item">
             <dt>Rebirths</dt>
             <dd>{seasonRebirths} this season</dd>
-          </div>
-        </dl>
-      )}
-
-      {canAccessV3 && (
-        <dl className="v3-status-details" aria-label="Seasonal CP milestones">
-          <div className="v3-status-item">
-            <dt>Highest settled tier</dt>
-            <dd>{runState.seasonalHighScoreTier}</dd>
-          </div>
-          <div className="v3-status-item">
-            <dt>Next CP milestone</dt>
-            <dd>
-              {runState.nextCpMilestoneTier === null
-                ? 'All score milestones reached'
-                : `Tier ${runState.nextCpMilestoneTier} · CP award may be capped`}
-            </dd>
           </div>
         </dl>
       )}

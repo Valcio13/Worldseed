@@ -6,6 +6,73 @@
   background: #223d32;
 }
 
+.v3-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid #d9e0d2;
+  border-radius: 999px;
+  color: #486852;
+  background: #edf3e7;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.living-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #d9e0d2;
+  border-radius: 999px;
+  background: #edf3e7;
+}
+
+.living-mode-switch button {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  color: #486852;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.living-mode-switch button[aria-pressed='true'] {
+  color: #fffef8;
+  background: #426b50;
+}
+
+.living-mode-switch button:focus-visible {
+  outline: 2px solid #725a2b;
+  outline-offset: 2px;
+}
+
+.v3-island-mode {
+  min-width: 0;
+  border: 1px solid #b8c9af;
+  border-radius: 12px;
+  background: #fffef8;
+}
+
+.v3-island-mode > summary {
+  min-height: 44px;
+  padding: 12px 14px;
+  color: #365b43;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.v3-island-mode > summary:focus-visible {
+  outline: 2px solid #725a2b;
+  outline-offset: 2px;
+}
+
 .v3-integration-guest[hidden] {
   display: none;
 }
@@ -35,6 +102,35 @@
   border-radius: 1rem;
   color: #283c31;
   background: #f4e8bf;
+}
+
+.v3-integration-page--embedded {
+  width: auto;
+  max-height: min(70dvh, 850px);
+  margin: 0 10px 12px;
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-width: 1px;
+  border-radius: 10px;
+}
+
+.v3-integration-page--embedded .v3-integration-heading h1 {
+  font-size: 1.2rem;
+}
+
+.v3-integration-page--embedded .v3-integration-explanation {
+  margin-block: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.v3-integration-page--embedded .v3-integration-auth,
+.v3-integration-page--embedded .v3-integration-flow-status,
+.v3-integration-page--embedded .v3-status-panel,
+.v3-integration-page--embedded .v3-run-controls,
+.v3-integration-page--embedded .v3-verified-gameplay {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .v3-integration-heading {
@@ -143,4 +239,49 @@
     align-items: stretch;
     flex-direction: column;
   }
+}
+
+@media (max-width: 700px) {
+  .living-topbar--modes {
+    height: auto;
+    min-height: 58px;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-block: 7px;
+  }
+
+  .living-topbar--modes .living-topbar-meta {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .v3-mode-badge {
+    min-height: 25px;
+    padding-inline: 7px;
+    font-size: 10px;
+  }
+
+  .living-mode-switch button {
+    min-height: 26px;
+    padding-inline: 7px;
+    font-size: 10px;
+  }
+
+  .v3-integration-page--embedded {
+    max-height: none;
+    margin-inline: 0;
+    padding: 10px;
+    overflow: visible;
+  }
+}
+
+.living-save-overlay section {
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.living-scene .island-heart:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }

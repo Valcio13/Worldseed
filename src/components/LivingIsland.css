@@ -1,0 +1,1810 @@
+.living-game {
+  --living-ivory: #f7f5ec;
+  --living-card: #fffef8;
+  --living-surface: #f0f1e8;
+  --living-warm-surface: #f4eedb;
+  --living-sage: #a8be9a;
+  --living-green: #426b50;
+  --living-green-hover: #365b43;
+  --living-green-soft: #edf3e7;
+  --living-green-soft-hover: #e4eddb;
+  --living-meadow: #86b978;
+  --living-aqua: #83bec1;
+  --living-gold: #c9ad65;
+  --living-gold-ink: #725a2b;
+  --living-sand: #e9dec3;
+  --living-ink: #294d3d;
+  --living-muted: #5e6f63;
+  --living-disabled: #607064;
+  --living-line: #d9e0d2;
+  min-height: 100vh;
+  color: var(--living-ink);
+  background: var(--living-ivory);
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+.living-topbar {
+  height: 68px;
+  padding: 0 clamp(10px, 4vw, 56px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(41, 77, 61, 0.12);
+  background: var(--living-ivory);
+}
+
+.living-brand,
+.living-topbar-meta,
+.living-save {
+  display: inline-flex;
+  align-items: center;
+}
+
+.living-brand {
+  gap: 10px;
+  color: var(--living-ink);
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.07em;
+  text-decoration: none;
+}
+
+.living-brand-seed {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 2px solid var(--living-green);
+  border-radius: 50%;
+  color: #f8f0ba;
+  background: var(--living-green);
+  font-size: 14px;
+}
+
+.living-topbar-meta {
+  gap: 16px;
+}
+.living-save {
+  gap: 7px;
+  color: var(--living-muted);
+  font-size: 12px;
+}
+.living-save i {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--living-meadow);
+}
+.living-save > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.living-save--pending i {
+  background: var(--living-gold);
+}
+
+.living-wallet-button {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--living-sage);
+  border-radius: 7px;
+  color: var(--living-green);
+  background: var(--living-card);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.living-wallet-button:hover {
+  background: var(--living-green-soft);
+}
+.living-wallet-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.living-main {
+  width: min(1040px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 26px 0 24px;
+}
+.living-desktop-layout {
+  display: block;
+}
+.living-island-column {
+  min-width: 0;
+}
+.living-control-panel {
+  min-width: 0;
+}
+.living-resource-bar {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  overflow: hidden;
+  border: 1px solid var(--living-line);
+  border-radius: 12px;
+  background: var(--living-card);
+  box-shadow: 0 4px 16px rgba(58, 81, 55, 0.05);
+}
+.living-resource {
+  min-width: 0;
+  padding: 14px 20px;
+  border-left: 1px solid var(--living-line);
+}
+.living-resource:first-child {
+  border-left: 0;
+}
+.living-resource span {
+  display: block;
+  color: var(--living-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.living-resource strong {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 3px;
+  color: var(--living-ink);
+  font-size: clamp(18px, 3vw, 25px);
+  font-variant-numeric: tabular-nums;
+}
+.living-resource small {
+  color: var(--living-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.living-resource--nature strong {
+  color: var(--living-gold-ink);
+}
+.living-resource-bar > .living-resource:nth-child(2) strong {
+  color: var(--living-ink);
+}
+.living-resource-bar > .living-resource:nth-child(3) strong {
+  color: var(--living-green);
+}
+
+.living-scene {
+  position: relative;
+  height: clamp(300px, 35vw, 400px);
+  margin: 16px 0 19px;
+  overflow: hidden;
+  isolation: isolate;
+  border: 2px solid var(--living-sage);
+  border-radius: 18px;
+  background:
+    radial-gradient(ellipse at 51% 35%, rgba(255, 255, 237, 0.32), transparent 58%),
+    linear-gradient(#dce9df 0%, #edf0df 56%, #c4d9c9 100%);
+  box-shadow:
+    inset 0 0 0 5px rgba(255, 255, 255, 0.34),
+    0 9px 25px rgba(51, 92, 63, 0.1);
+}
+.living-scene-sky {
+  position: absolute;
+  inset: 0 0 40%;
+  overflow: hidden;
+}
+.scene-distant-islands {
+  position: absolute;
+  inset: 0;
+}
+.scene-distant-island {
+  position: absolute;
+  width: 72px;
+  height: 26px;
+  opacity: 0.36;
+  image-rendering: pixelated;
+}
+.scene-distant-island::before,
+.scene-distant-island::after {
+  position: absolute;
+  display: block;
+  content: '';
+  image-rendering: pixelated;
+}
+.scene-distant-island::before {
+  top: 1px;
+  left: 7px;
+  width: 58px;
+  height: 14px;
+  background: #9dbeb2;
+  clip-path: polygon(0 75%, 12% 45%, 22% 45%, 30% 8%, 52% 8%, 63% 38%, 80% 22%, 100% 70%, 84% 100%, 18% 100%);
+}
+.scene-distant-island::after {
+  bottom: 1px;
+  left: 17px;
+  width: 40px;
+  height: 8px;
+  background: #86a99d;
+  clip-path: polygon(8% 0, 92% 0, 76% 62%, 55% 100%, 30% 75%);
+}
+.scene-distant-island--1 {
+  top: 62%;
+  left: 7%;
+  transform: scale(0.72);
+}
+.scene-distant-island--2 {
+  top: 56%;
+  right: 9%;
+  transform: scale(1.05);
+}
+.scene-distant-island--3 {
+  top: 70%;
+  left: 64%;
+  transform: scale(0.58);
+}
+.pixel-cloud {
+  position: absolute;
+  display: block;
+  width: 76px;
+  height: 18px;
+  background: #f8fff1;
+  opacity: 0.8;
+  box-shadow:
+    14px -10px 0 -2px #f8fff1,
+    30px -8px 0 0 #f8fff1,
+    42px 0 0 -2px #f8fff1;
+  image-rendering: pixelated;
+}
+.pixel-cloud--one {
+  top: 16%;
+  left: 14%;
+  animation: cloud-drift 24s ease-in-out infinite alternate;
+}
+.pixel-cloud--two {
+  top: 27%;
+  right: 17%;
+  transform: scale(0.72);
+  opacity: 0.58;
+  animation: cloud-drift 30s ease-in-out -7s infinite alternate-reverse;
+}
+.scene-spark {
+  position: absolute;
+  color: #fff8c9;
+  text-shadow: 1px 1px #b9a963;
+}
+.scene-spark--one {
+  top: 26%;
+  left: 36%;
+  font-size: 17px;
+}
+.scene-spark--two {
+  top: 13%;
+  right: 35%;
+  font-size: 13px;
+}
+.scene-spark {
+  animation: spark-twinkle 3.4s ease-in-out infinite alternate;
+}
+.scene-spark--two {
+  animation-delay: -1.7s;
+}
+.scene-firefly {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 1px;
+  background: #fff6ae;
+  box-shadow: 0 0 8px 2px rgba(255, 240, 150, 0.55);
+  image-rendering: pixelated;
+  animation: firefly-float 4.5s ease-in-out infinite alternate;
+}
+.scene-firefly--1 {
+  top: 58%;
+  left: 21%;
+}
+.scene-firefly--2 {
+  top: 70%;
+  right: 20%;
+  animation-delay: -1.2s;
+}
+.scene-firefly--3 {
+  top: 50%;
+  right: 37%;
+  animation-delay: -2.7s;
+}
+.scene-firefly--4 {
+  top: 64%;
+  left: 39%;
+  animation-delay: -3.4s;
+}
+.living-island-water {
+  position: absolute;
+  z-index: -1;
+  left: -8%;
+  right: -8%;
+  bottom: -26%;
+  height: 62%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 52% 8%, rgba(232, 247, 224, 0.34), transparent 56%),
+    linear-gradient(180deg, var(--living-aqua) 0%, #7bb4b7 55%, #72a9ad 100%);
+  box-shadow: inset 0 9px 0 rgba(195, 225, 207, 0.55);
+  animation: island-water-shimmer 12s linear infinite;
+}
+.water-glint {
+  position: absolute;
+  width: 18px;
+  height: 3px;
+  border-radius: 1px;
+  background: rgba(229, 250, 219, 0.62);
+  box-shadow: 5px 4px 0 -1px rgba(222, 247, 217, 0.34);
+  image-rendering: pixelated;
+  animation: water-glint-drift 5.8s ease-in-out infinite alternate;
+}
+.living-island-land {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  width: min(65%, 590px);
+  height: 55%;
+  transform: translateX(-50%);
+  border: 7px solid #8b7052;
+  border-radius: 48% 48% 35% 35% / 54% 54% 35% 35%;
+  overflow: hidden;
+  background-color: var(--living-meadow);
+  background-image:
+    linear-gradient(rgba(47, 77, 52, 0.035), rgba(47, 77, 52, 0.035)),
+    url('/assets/third-party/craftpix/terrain/grass-field-tile.png');
+  background-size: 256px 256px;
+  background-repeat: repeat;
+  image-rendering: pixelated;
+  box-shadow:
+    inset 0 -15px 0 rgba(74, 111, 64, 0.2),
+    0 15px 0 #705944,
+    0 19px 0 rgba(38, 73, 54, 0.18);
+  transition:
+    height 0.45s ease,
+    width 0.45s ease,
+    filter 0.45s ease;
+}
+.living-scene--seed .living-island-land {
+  width: 48%;
+  height: 39%;
+}
+.living-scene--growing .living-island-land {
+  width: 70%;
+  height: 52%;
+}
+.living-scene--flourishing .living-island-land {
+  width: 82%;
+  height: 57%;
+}
+.living-scene--flourishing .living-tree--3 {
+  left: 8%;
+}
+.island-edge-detail {
+  position: absolute;
+  z-index: 0;
+  width: 8px;
+  height: 3px;
+  background: #73b45f;
+  box-shadow:
+    4px -3px 0 #7fbe69,
+    8px 0 0 #73b45f;
+  image-rendering: pixelated;
+  opacity: 0.82;
+  pointer-events: none;
+}
+.island-edge-detail[data-edge-material='earth'] {
+  background: #a27c55;
+  box-shadow:
+    4px -3px 0 #b18a5d,
+    8px 0 0 #987249;
+  opacity: 0.72;
+}
+.island-edge-detail--1 {
+  left: 17%;
+  top: 18%;
+}
+.island-edge-detail--2 {
+  right: 17%;
+  top: 18%;
+  transform: scaleX(-1);
+}
+.island-edge-detail--3 {
+  right: 5%;
+  top: 46%;
+}
+.island-edge-detail--4 {
+  right: 16%;
+  bottom: 18%;
+  transform: scaleX(-1);
+}
+.island-edge-detail--5 {
+  right: 34%;
+  bottom: 7%;
+}
+.island-edge-detail--6 {
+  left: 34%;
+  bottom: 7%;
+  transform: scaleX(-1);
+}
+.island-edge-detail--7 {
+  left: 16%;
+  bottom: 18%;
+}
+.island-edge-detail--8 {
+  left: 5%;
+  top: 46%;
+  transform: scaleX(-1);
+}
+.living-tree {
+  position: absolute;
+  bottom: 19%;
+  width: 64px;
+  height: auto;
+  image-rendering: pixelated;
+  filter: saturate(0.78) drop-shadow(2px 4px 0 rgba(63, 91, 50, 0.22));
+}
+.living-tree--thin {
+  width: 32px;
+}
+.living-tree--1 {
+  left: 24%;
+  bottom: 35%;
+}
+.living-tree--2 {
+  right: 22%;
+  bottom: 32%;
+  transform: scale(0.82);
+}
+.living-tree--3 {
+  left: 12%;
+  bottom: 15%;
+  transform: scale(0.72);
+}
+.living-tree--4 {
+  right: 11%;
+  bottom: 14%;
+  transform: scale(0.72);
+}
+.living-tree--5 {
+  left: 39%;
+  bottom: 7%;
+  transform: scale(0.58);
+}
+.living-tree--6 {
+  right: 38%;
+  bottom: 7%;
+  transform: scale(0.58);
+}
+.island-sprout {
+  position: absolute;
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 2px 0 rgba(72, 108, 59, 0.28));
+}
+.island-sprout--one {
+  left: 14%;
+  bottom: 23%;
+}
+.island-sprout--two {
+  right: 16%;
+  bottom: 21%;
+}
+.island-sprout--three {
+  left: 32%;
+  bottom: 11%;
+}
+.island-sprout--4 {
+  right: 33%;
+  bottom: 10%;
+}
+.island-sprout--5 {
+  left: 51%;
+  bottom: 36%;
+  transform: scale(0.82);
+}
+.island-sprout--6 {
+  left: 15%;
+  top: 52%;
+  transform: scale(0.78);
+}
+.island-sprout--7 {
+  right: 15%;
+  top: 52%;
+  transform: scale(0.78);
+}
+.island-stone {
+  position: absolute;
+  z-index: 1;
+  width: 13px;
+  height: 8px;
+  background: #c9b896;
+  box-shadow:
+    5px -4px 0 -1px #e4d4ae,
+    3px 3px 0 #927c5b;
+  image-rendering: pixelated;
+}
+.island-stone--1 {
+  left: 26%;
+  bottom: 12%;
+}
+.island-stone--2 {
+  right: 24%;
+  bottom: 13%;
+}
+.island-stone--3 {
+  left: 45%;
+  bottom: 7%;
+  transform: scale(0.8);
+}
+.island-stone--4 {
+  left: 8%;
+  bottom: 30%;
+  transform: scale(0.75);
+}
+.island-stone--5 {
+  right: 9%;
+  bottom: 30%;
+  transform: scale(0.75);
+}
+.craftpix-decoration {
+  position: absolute;
+  z-index: 1;
+  height: auto;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.craftpix-decoration--seed-rock {
+  left: 35%;
+  bottom: 18%;
+  width: 32px;
+  filter: saturate(0.62) drop-shadow(1px 2px 0 rgba(76, 75, 86, 0.2));
+}
+.craftpix-decoration--sprout-bush {
+  left: 7%;
+  bottom: 18%;
+  width: 32px;
+  filter: saturate(0.76) drop-shadow(1px 2px 0 rgba(63, 91, 50, 0.2));
+}
+.craftpix-decoration--sprout-edge-flower {
+  right: 13%;
+  top: 47%;
+  width: 22px;
+  filter: drop-shadow(1px 2px 0 rgba(72, 108, 59, 0.25));
+}
+.craftpix-decoration--growing-bush {
+  right: 7%;
+  bottom: 18%;
+  width: 64px;
+  filter: saturate(0.76) drop-shadow(1px 2px 0 rgba(63, 91, 50, 0.2));
+}
+.craftpix-decoration--growing-pebble {
+  left: 35%;
+  bottom: 10%;
+  width: 24px;
+  filter: saturate(0.62) drop-shadow(1px 2px 0 rgba(76, 75, 86, 0.2));
+}
+.craftpix-decoration--growing-bush-small {
+  left: 26%;
+  top: 54%;
+  width: 32px;
+  filter: saturate(0.76) drop-shadow(1px 2px 0 rgba(63, 91, 50, 0.2));
+}
+.craftpix-decoration--growing-upper-mushroom {
+  right: 15%;
+  top: 34%;
+  width: 24px;
+  filter: drop-shadow(1px 2px 0 rgba(72, 108, 59, 0.25));
+}
+.craftpix-decoration--growing-edge-flower {
+  left: 20%;
+  top: 39%;
+  width: 22px;
+  filter: drop-shadow(1px 2px 0 rgba(72, 108, 59, 0.25));
+}
+.craftpix-decoration--flourishing-grove {
+  left: 3%;
+  top: 2%;
+  width: clamp(120px, 18vw, 160px);
+  filter: saturate(0.76) drop-shadow(2px 3px 0 rgba(63, 91, 50, 0.18));
+}
+.craftpix-decoration--flourishing-bush-small {
+  right: 9%;
+  bottom: 13%;
+  width: 32px;
+  filter: saturate(0.76) drop-shadow(1px 2px 0 rgba(63, 91, 50, 0.2));
+}
+.craftpix-decoration--flourishing-bush-wide {
+  right: 34%;
+  bottom: 9%;
+  width: 64px;
+  filter: saturate(0.76) drop-shadow(1px 2px 0 rgba(63, 91, 50, 0.2));
+}
+.craftpix-decoration--flourishing-bush-round {
+  top: 14%;
+  right: 22%;
+  width: 48px;
+  filter: saturate(0.76) drop-shadow(1px 2px 0 rgba(63, 91, 50, 0.2));
+}
+.craftpix-decoration--flourishing-pebble {
+  left: 34%;
+  bottom: 10%;
+  width: 24px;
+  filter: saturate(0.62) drop-shadow(1px 2px 0 rgba(76, 75, 86, 0.2));
+}
+.craftpix-decoration--flourishing-boulder {
+  right: 44%;
+  bottom: 8%;
+  width: 32px;
+  filter: saturate(0.62) drop-shadow(1px 2px 0 rgba(76, 75, 86, 0.2));
+}
+.craftpix-decoration--flourishing-upper-flower {
+  left: 66%;
+  top: 26%;
+  width: 24px;
+  filter: drop-shadow(1px 2px 0 rgba(72, 108, 59, 0.25));
+}
+.craftpix-decoration--flourishing-upper-mushroom {
+  right: 14%;
+  top: 34%;
+  width: 25px;
+  filter: drop-shadow(1px 2px 0 rgba(72, 108, 59, 0.25));
+}
+.craftpix-decoration--flourishing-right-bush {
+  right: 17%;
+  top: 55%;
+  width: 28px;
+  filter: saturate(0.76) drop-shadow(1px 2px 0 rgba(63, 91, 50, 0.2));
+}
+.craftpix-decoration--flourishing-right-pebble {
+  right: 15%;
+  top: 68%;
+  width: 22px;
+  filter: saturate(0.62) drop-shadow(1px 2px 0 rgba(76, 75, 86, 0.2));
+}
+.island-campsite {
+  position: absolute;
+  z-index: 1;
+  top: 6%;
+  left: 3%;
+  width: clamp(132px, 17vw, 160px);
+  aspect-ratio: 5 / 4;
+  pointer-events: none;
+}
+.island-campsite img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 3px 0 rgba(47, 67, 43, 0.2));
+}
+.island-campsite-ember {
+  position: absolute;
+  top: 66%;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  background: #ffe5a0;
+  box-shadow: 3px -4px 0 #f6b54f, -3px -2px 0 #ffcf64;
+  image-rendering: pixelated;
+  animation: campsite-ember-glow 1.15s steps(2, end) infinite alternate;
+}
+.island-creature-layer {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+}
+.island-creature {
+  position: absolute;
+  display: block;
+  width: 56px;
+  height: 56px;
+  image-rendering: pixelated;
+  pointer-events: none;
+  transition:
+    left var(--creature-walk-duration) cubic-bezier(0.35, 0.05, 0.65, 0.95),
+    top var(--creature-walk-duration) cubic-bezier(0.35, 0.05, 0.65, 0.95);
+}
+.island-creature-sprite {
+  display: block;
+  width: 56px;
+  height: 56px;
+  background-image: url('/assets/characters/worldseed-characters.png');
+  background-repeat: no-repeat;
+  background-size: 336px 168px;
+  image-rendering: pixelated;
+  filter:
+    drop-shadow(0 0 1px rgba(255, 247, 199, 0.78))
+    drop-shadow(1px 3px 0 rgba(48, 75, 48, 0.38));
+  background-position: var(--creature-sprite-x) 0;
+  animation: island-creature-breathe 3.2s ease-in-out infinite;
+}
+.island-creature--moss {
+  --creature-sprite-x: -144px;
+  --creature-walk-duration: 1250ms;
+}
+.island-creature--pip {
+  --creature-sprite-x: -192px;
+  --creature-walk-duration: 1450ms;
+}
+.island-creature--luma {
+  --creature-sprite-x: -240px;
+  --creature-walk-duration: 1650ms;
+}
+.island-creature--luma .island-creature-sprite {
+  filter: drop-shadow(0 0 5px rgba(234, 255, 206, 0.56))
+    drop-shadow(1px 2px 0 rgba(48, 75, 48, 0.32));
+}
+.island-creature--facing-left .island-creature-sprite {
+  transform: scaleX(-1);
+}
+.island-creature--walking .island-creature-sprite {
+  animation: island-creature-walk 380ms steps(1, end) infinite;
+}
+.island-heart {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: 25%;
+  display: grid;
+  width: 178px;
+  min-height: 190px;
+  place-items: center;
+  padding: 0 6px 8px;
+  transform: translateX(-50%);
+  border: 0;
+  border-radius: 16px;
+  color: #fff8d4;
+  background: transparent;
+  cursor: pointer;
+  filter: drop-shadow(0 5px 0 rgba(53, 84, 50, 0.17));
+  transition:
+    transform 0.16s ease,
+    filter 0.16s ease;
+}
+.island-heart:focus-visible {
+  outline: 2px solid #bd8745;
+  outline-offset: 3px;
+}
+.island-heart:hover {
+  transform: translateX(-50%) translateY(-4px) scale(1.04);
+  filter: drop-shadow(0 8px 0 rgba(53, 84, 50, 0.14));
+}
+.island-heart:active {
+  transform: translateX(-50%) translateY(2px) scale(0.97);
+}
+.island-heart::before {
+  position: absolute;
+  z-index: -1;
+  top: 7px;
+  left: 50%;
+  width: 136px;
+  height: 136px;
+  border-radius: 50%;
+  background: rgba(255, 244, 178, 0.38);
+  content: '';
+  filter: blur(2px);
+  transform: translateX(-50%);
+  transition:
+    background 0.2s ease,
+    scale 0.2s ease;
+}
+.island-heart::after {
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 148px;
+  height: 148px;
+  border: 2px solid rgba(255, 240, 175, 0.78);
+  border-radius: 50%;
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) scale(0.72);
+}
+.island-heart--clicked::after {
+  animation: heart-bloom 0.48s ease-out;
+}
+.island-heart:hover::before,
+.island-heart:focus-visible::before {
+  background: rgba(255, 232, 128, 0.62);
+  scale: 1.1;
+}
+.island-heart-sprite {
+  display: block;
+  width: 144px;
+  height: 144px;
+  background: url('/assets/landmarks/worldseed-heart-states.png') left top / 288px 144px no-repeat;
+  image-rendering: pixelated;
+}
+.island-heart--clicked .island-heart-sprite {
+  animation: heart-throb 0.48s cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+.heart-click-feedback {
+  position: absolute;
+  top: 3%;
+  left: 50%;
+  z-index: 3;
+  padding: 4px 8px;
+  border: 1px solid #bb9a54;
+  border-radius: 5px;
+  color: #6f5428;
+  background: #fff1b9;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: nature-pop 0.9s ease-out both;
+}
+.living-scene--flourishing .island-heart-sprite {
+  background-position: right top;
+}
+.island-heart-label {
+  margin-top: -3px;
+  padding: 3px 8px;
+  border: 1px solid rgba(111, 83, 44, 0.25);
+  border-radius: 4px;
+  color: #584326;
+  background: #ffefb7;
+  font-size: 12px;
+  font-weight: 800;
+}
+.island-heart strong {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  padding: 3px 7px;
+  border: 1px solid #a87c39;
+  border-radius: 12px;
+  color: white;
+  background: #d7963f;
+  font-size: 13px;
+}
+.island-stage-label {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  padding: 7px 11px;
+  border: 1px solid rgba(75, 111, 75, 0.22);
+  border-radius: 20px;
+  color: #3e6747;
+  background: rgba(255, 255, 244, 0.78);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.island-stage-info {
+  position: absolute;
+  top: 14px;
+  left: 15px;
+  display: grid;
+  gap: 5px;
+  width: min(185px, calc(100% - 30px));
+}
+.island-stage-label span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #86b767;
+}
+.island-stage-progress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid rgba(75, 111, 75, 0.18);
+  border-radius: 7px;
+  color: #536b58;
+  background: rgba(255, 255, 244, 0.8);
+  font-size: 9px;
+}
+.island-stage-progress-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #e2eadb;
+}
+.island-stage-progress-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #7fab69;
+  transition: width 0.25s ease;
+}
+.island-stage-progress b {
+  font-size: 8px;
+  font-weight: 700;
+}
+
+@keyframes heart-throb {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(1.13) translateY(-3px);
+    filter: brightness(1.12);
+  }
+  72% {
+    transform: scale(0.98);
+  }
+}
+
+@keyframes nature-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.86);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -13px);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -22px);
+  }
+}
+
+@keyframes heart-bloom {
+  0% {
+    opacity: 0.8;
+    transform: translateX(-50%) scale(0.72);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) scale(1.18);
+  }
+}
+
+@keyframes cloud-drift {
+  to {
+    translate: 18px 0;
+  }
+}
+
+@keyframes spark-twinkle {
+  to {
+    opacity: 0.42;
+    transform: scale(0.78);
+  }
+}
+
+@keyframes firefly-float {
+  to {
+    opacity: 0.45;
+    translate: 5px -8px;
+  }
+}
+
+@keyframes island-water-shimmer {
+  to {
+    background-position:
+      0 36px,
+      0 0;
+  }
+}
+
+.living-shop,
+.living-rebirth-card,
+.living-upgrades-card {
+  padding: 20px;
+  border: 1px solid var(--living-line);
+  border-radius: 12px;
+  background: var(--living-card);
+  box-shadow: 0 4px 16px rgba(58, 81, 55, 0.045);
+}
+.living-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.living-eyebrow {
+  display: block;
+  color: var(--living-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+.living-section-heading h1,
+.living-section-heading h2 {
+  margin: 3px 0 0;
+  color: var(--living-ink);
+  font-size: 21px;
+  line-height: 1.2;
+  letter-spacing: -0.04em;
+}
+.living-resource-chip,
+.living-pp-chip {
+  padding: 7px 10px;
+  border-radius: 7px;
+  color: var(--living-gold-ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+.living-resource-chip {
+  background: var(--living-warm-surface);
+}
+.living-pp-chip {
+  background: var(--living-sand);
+}
+.living-habitat-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 15px;
+}
+.living-habitat {
+  display: grid;
+  grid-template-columns: 43px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--living-line);
+  border-radius: 9px;
+  background: var(--living-ivory);
+}
+.living-habitat-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid var(--living-sage);
+  border-radius: 9px;
+  color: var(--living-green);
+  background: var(--living-green-soft);
+  font-size: 22px;
+}
+.living-habitat--water .living-habitat-icon {
+  color: #3e7379;
+  background: #e8f1ee;
+}
+.living-habitat--forest .living-habitat-icon {
+  color: #4b6c4c;
+  background: #edf1e6;
+}
+.living-habitat--mountain .living-habitat-icon {
+  color: #667368;
+  background: #f0f1e9;
+}
+.living-habitat--crystal-cavern .living-habitat-icon {
+  color: #6d6281;
+  background: #f0edf2;
+}
+.living-habitat--ancient-grove .living-habitat-icon {
+  color: #75653d;
+  background: #f3efdf;
+}
+.living-habitat-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.living-habitat-copy strong {
+  color: var(--living-ink);
+  font-size: 14px;
+}
+.living-habitat-copy span {
+  color: var(--living-muted);
+  font-size: 11px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.living-habitat-copy small {
+  color: var(--living-muted);
+  font-size: 10px;
+}
+.living-habitat-actions {
+  display: flex;
+  gap: 6px;
+}
+.living-habitat-actions button {
+  min-width: 66px;
+  min-height: 38px;
+  padding: 4px 9px;
+  border: 1px solid var(--living-sage);
+  border-radius: 7px;
+  color: var(--living-green);
+  background: var(--living-green-soft);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.living-habitat-actions button:hover:not(:disabled) {
+  background: var(--living-green-soft-hover);
+}
+.living-habitat-actions button:disabled {
+  border-color: var(--living-line);
+  color: var(--living-disabled);
+  background: var(--living-surface);
+  cursor: not-allowed;
+}
+.living-habitat-actions small {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--living-green);
+  font-size: 10px;
+  font-weight: 700;
+}
+.living-habitat-upgrades {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--living-line);
+  padding-top: 7px;
+}
+.living-habitat-upgrades summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--living-green);
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+.living-habitat-upgrades summary::-webkit-details-marker {
+  display: none;
+}
+.living-habitat-upgrades summary::before {
+  content: '▸';
+  margin-right: 6px;
+  transition: transform 0.15s ease;
+}
+.living-habitat-upgrades[open] summary::before {
+  transform: rotate(90deg);
+}
+.living-habitat-upgrades summary span {
+  margin-left: auto;
+  color: var(--living-muted);
+  font-weight: 600;
+}
+.living-habitat-upgrade-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+.living-habitat-upgrade {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 7px;
+  border: 1px solid var(--living-line);
+  border-radius: 6px;
+  background: var(--living-ivory);
+  font-size: 9px;
+}
+.living-habitat-upgrade > span:first-child,
+.living-habitat-upgrade-meta {
+  display: grid;
+  gap: 2px;
+}
+.living-habitat-upgrade strong {
+  color: var(--living-ink);
+  font-size: 10px;
+}
+.living-habitat-upgrade small,
+.living-habitat-upgrade-meta {
+  color: var(--living-muted);
+  font-size: 9px;
+}
+.living-habitat-upgrade-meta {
+  text-align: right;
+}
+.living-habitat-upgrade-meta b {
+  color: var(--living-gold-ink);
+  font-size: 8px;
+  font-weight: 700;
+}
+.living-habitat-upgrade--available {
+  border-color: var(--living-sage);
+  background: var(--living-green-soft);
+}
+.living-habitat-upgrade--available .living-habitat-upgrade-meta b {
+  color: var(--living-green);
+}
+.living-habitat-upgrade--unaffordable {
+  border-color: var(--living-line);
+  background: var(--living-surface);
+}
+.living-habitat-upgrade--unaffordable .living-habitat-upgrade-meta b {
+  color: var(--living-muted);
+}
+.living-habitat-upgrade--purchased {
+  border-color: var(--living-gold);
+  background: var(--living-warm-surface);
+}
+.living-habitat-upgrade--purchased .living-habitat-upgrade-meta b {
+  color: var(--living-gold-ink);
+}
+.living-habitat-upgrade-meta button {
+  min-height: 27px;
+  padding: 3px 6px;
+  border: 1px solid var(--living-sage);
+  border-radius: 5px;
+  color: var(--living-green);
+  background: var(--living-green-soft);
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.living-habitat-upgrade-meta button:disabled {
+  border-color: var(--living-line);
+  color: var(--living-disabled);
+  background: var(--living-surface);
+  cursor: not-allowed;
+}
+.living-habitat-upgrade--available .living-habitat-upgrade-meta button:not(:disabled):hover {
+  background: var(--living-green-soft-hover);
+}
+.living-habitat-upgrade-note {
+  display: block;
+  margin-top: 6px;
+  color: var(--living-muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.living-progression {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: 14px;
+  margin-top: 14px;
+}
+.living-rebirth-count {
+  color: var(--living-muted);
+  font-size: 11px;
+}
+.living-rebirth-card p {
+  margin: 14px 0 10px;
+  color: var(--living-muted);
+  font-size: 12px;
+}
+.living-rebirth-card {
+  border-color: var(--living-line);
+  scroll-margin-top: 16px;
+}
+.living-rebirth-card .living-rebirth-progress-copy {
+  margin: 14px 0 8px;
+  color: var(--living-muted);
+  line-height: 1.5;
+}
+.living-rebirth-progress-copy strong {
+  color: var(--living-ink);
+}
+.living-rebirth-card .living-rebirth-locked,
+.living-rebirth-card .living-rebirth-ready {
+  margin: 8px 0 10px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.living-rebirth-card .living-rebirth-ready {
+  color: var(--living-green);
+  font-weight: 700;
+}
+.living-rebirth-track {
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid var(--living-line);
+  border-radius: 10px;
+  background: var(--living-surface);
+}
+.living-rebirth-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--living-meadow), var(--living-gold));
+  transition: width 0.25s ease;
+}
+.living-rebirth-reward {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 9px 0 12px;
+  color: var(--living-muted);
+  font-size: 10px;
+}
+.living-rebirth-reward strong:first-of-type {
+  color: var(--living-gold-ink);
+}
+.living-rebirth-button {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border: 1px solid var(--living-green);
+  border-radius: 7px;
+  color: #fffef8;
+  background: var(--living-green);
+  font-weight: 800;
+  cursor: pointer;
+}
+.living-rebirth-button:hover:not(:disabled) {
+  background: var(--living-green-hover);
+}
+.living-rebirth-button:disabled {
+  border-color: var(--living-line);
+  color: var(--living-disabled);
+  background: var(--living-surface);
+  cursor: not-allowed;
+}
+.living-upgrade-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 13px;
+}
+.living-upgrade {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--living-line);
+  border-radius: 7px;
+  text-align: left;
+  color: var(--living-ink);
+  background: var(--living-card);
+  cursor: pointer;
+}
+.living-upgrade:disabled {
+  color: var(--living-disabled);
+  background: var(--living-surface);
+  cursor: not-allowed;
+}
+.living-upgrade span,
+.living-boosts button span {
+  display: grid;
+  gap: 2px;
+}
+.living-upgrade strong {
+  font-size: 11px;
+}
+.living-upgrade strong small {
+  color: var(--living-muted);
+  font-weight: 500;
+}
+.living-upgrade span > small,
+.living-boosts button small {
+  color: var(--living-muted);
+  font-size: 9px;
+}
+.living-upgrade > b {
+  flex: 0 0 auto;
+  color: var(--living-gold-ink);
+  font-size: 10px;
+}
+.living-boosts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 8px;
+}
+.living-boosts button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--living-line);
+  border-radius: 7px;
+  color: var(--living-ink);
+  background: var(--living-card);
+  text-align: left;
+  cursor: pointer;
+}
+.living-boosts button:disabled {
+  color: var(--living-disabled);
+  background: var(--living-surface);
+  cursor: not-allowed;
+}
+.living-boosts button strong {
+  font-size: 10px;
+}
+.living-boosts button > b {
+  flex: 0 0 auto;
+  color: var(--living-gold-ink);
+  font-size: 10px;
+}
+.living-notice {
+  padding: 10px 13px;
+  border: 1px solid var(--living-sage);
+  border-radius: 8px;
+  color: var(--living-green);
+  background: var(--living-green-soft);
+  font-size: 12px;
+}
+.living-footer {
+  padding: 18px 4px 0;
+  color: var(--living-muted);
+  text-align: center;
+  font-size: 10px;
+}
+
+.living-game :is(button, a):focus-visible {
+  outline: 2px solid var(--living-gold-ink);
+  outline-offset: 2px;
+}
+
+@media (min-width: 1001px) {
+  .living-topbar {
+    position: sticky;
+    z-index: 10;
+    top: 0;
+  }
+  .living-main {
+    width: min(1480px, calc(100% - 48px));
+    padding: 16px 0 24px;
+    display: flex;
+    height: calc(100dvh - 68px);
+    min-height: 0;
+    box-sizing: border-box;
+    flex-direction: column;
+  }
+  .living-desktop-layout {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1.85fr) minmax(320px, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: start;
+    gap: clamp(16px, 2vw, 28px);
+  }
+  .living-island-column {
+    position: sticky;
+    top: 82px;
+    align-self: start;
+  }
+  .living-control-panel {
+    display: grid;
+    min-height: 0;
+    align-content: start;
+    gap: 10px;
+    overflow-y: auto;
+    padding: 2px 7px 14px 1px;
+    scrollbar-gutter: stable;
+    scroll-padding-block: 12px;
+  }
+  .living-scene {
+    height: clamp(420px, 58dvh, 620px);
+  }
+  .living-control-panel .living-shop,
+  .living-control-panel .living-rebirth-card,
+  .living-control-panel .living-upgrades-card {
+    padding: 14px;
+  }
+  .living-control-panel .living-habitat-list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+  .living-control-panel .living-habitat {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 9px 8px;
+  }
+  .living-control-panel .living-habitat-actions {
+    gap: 4px;
+  }
+  .living-control-panel .living-habitat-actions button {
+    min-width: 64px;
+    min-height: 38px;
+    padding: 3px 6px;
+  }
+  .living-control-panel .living-habitat-actions small {
+    font-size: 10px;
+  }
+  .living-control-panel .living-boosts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .living-control-panel :focus-visible {
+    scroll-margin-block: 12px;
+  }
+}
+
+@media (min-width: 1001px) and (max-height: 650px) {
+  .living-main {
+    height: auto;
+    min-height: calc(100dvh - 68px);
+    padding-block: 10px 18px;
+  }
+  .living-desktop-layout {
+    flex: initial;
+    min-height: auto;
+    grid-template-rows: auto;
+  }
+  .living-island-column {
+    top: 72px;
+  }
+  .living-scene {
+    height: clamp(220px, calc(100dvh - 360px), 300px);
+    margin-block: 12px;
+  }
+  .living-resource {
+    padding-block: 9px;
+  }
+  .living-control-panel {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+.living-save-overlay {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(27, 48, 37, 0.45);
+}
+.living-save-overlay section {
+  width: min(420px, 100%);
+  padding: 24px;
+  border: 2px solid #9db58f;
+  border-radius: 12px;
+  background: #fffef5;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+}
+.living-save-overlay h2 {
+  margin: 6px 0;
+  color: #345440;
+  font-size: 22px;
+}
+.living-save-overlay p {
+  color: #738176;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.living-save-overlay button {
+  min-height: 40px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 6px;
+  color: #fffbed;
+  background: #57845b;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 700px) {
+  .living-main {
+    width: min(100% - 20px, 560px);
+    padding-top: 14px;
+  }
+  .living-topbar {
+    height: 58px;
+    padding: 0 10px;
+  }
+  .living-topbar-meta {
+    min-width: 0;
+    gap: 7px;
+  }
+  .living-save {
+    font-size: 10px;
+    max-width: 76px;
+  }
+  .living-wallet-button {
+    max-width: 136px;
+    overflow: hidden;
+    padding: 0 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+  }
+  .living-resource {
+    padding: 10px 9px;
+  }
+  .living-resource span {
+    font-size: 9px;
+  }
+  .living-resource strong {
+    font-size: clamp(15px, 4vw, 20px);
+  }
+  .living-resource small {
+    font-size: 9px;
+  }
+  .living-scene {
+    height: 315px;
+    margin: 12px 0 15px;
+  }
+  .living-island-land {
+    width: 75%;
+    bottom: 13%;
+    height: 50%;
+  }
+  .living-scene--seed .living-island-land {
+    width: 53%;
+    height: 38%;
+  }
+  .living-scene--growing .living-island-land {
+    width: 80%;
+    height: 53%;
+  }
+  .living-scene--flourishing .living-island-land {
+    width: 88%;
+    height: 58%;
+  }
+  .island-campsite {
+    top: 6%;
+    left: 2%;
+    width: clamp(92px, 26vw, 120px);
+  }
+  .island-creature,
+  .island-creature-sprite {
+    width: 36px;
+    height: 36px;
+  }
+  .island-creature-sprite {
+    background-size: 216px 108px;
+  }
+  .island-creature--moss {
+    --creature-sprite-x: -108px;
+  }
+  .island-creature--pip {
+    --creature-sprite-x: -144px;
+  }
+  .island-creature--luma {
+    --creature-sprite-x: -180px;
+  }
+  .living-scene--flourishing .living-tree--3 {
+    width: 32px;
+  }
+  .island-creature--walking .island-creature-sprite {
+    animation-name: island-creature-walk-small;
+  }
+  .island-heart {
+    bottom: 20%;
+    transform: translateX(-50%) scale(0.92);
+  }
+  .island-heart:hover {
+    transform: translateX(-50%) scale(0.95);
+  }
+  .living-habitat {
+    grid-template-columns: 36px 1fr auto;
+    gap: 8px;
+    padding: 9px 7px;
+  }
+  .living-habitat-list {
+    grid-template-columns: 1fr;
+  }
+  .living-habitat-icon {
+    width: 34px;
+    height: 34px;
+  }
+  .living-habitat-copy small {
+    display: none;
+  }
+  .living-habitat-actions {
+    gap: 4px;
+  }
+  .living-habitat-actions button {
+    min-width: 49px;
+    min-height: 35px;
+    padding: 3px 5px;
+    font-size: 10px;
+  }
+  .living-habitat-actions small {
+    font-size: 8px;
+  }
+  .living-progression {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .living-shop,
+  .living-rebirth-card,
+  .living-upgrades-card {
+    padding: 14px;
+  }
+}
+
+@media (max-width: 380px) {
+  .living-brand {
+    gap: 7px;
+    font-size: 18px;
+  }
+  .living-brand-seed {
+    width: 24px;
+    height: 24px;
+  }
+  .living-save {
+    max-width: 15px;
+  }
+  .living-save > span {
+    width: 0;
+  }
+  .living-wallet-button {
+    max-width: 124px;
+  }
+  .living-resource {
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .living-island-land,
+  .island-creature,
+  .island-heart,
+  .living-rebirth-track i,
+  .island-stage-progress-track i {
+    transition: none;
+  }
+  .pixel-cloud,
+  .scene-spark,
+  .scene-firefly,
+  .island-creature,
+  .island-creature-sprite,
+  .island-creature--walking .island-creature-sprite,
+  .island-campsite-ember,
+  .water-glint,
+  .living-island-water,
+  .island-heart--clicked::after {
+    animation: none;
+  }
+  .island-heart--clicked .island-heart-sprite,
+  .heart-click-feedback {
+    animation: none;
+  }
+}
+
+@keyframes island-creature-walk {
+  0%,
+  32%,
+  65%,
+  100% {
+    background-position-y: -56px;
+  }
+  33%,
+  64% {
+    background-position-y: -112px;
+  }
+}
+@keyframes island-creature-walk-small {
+  0%,
+  32%,
+  65%,
+  100% {
+    background-position-y: -36px;
+  }
+  33%,
+  64% {
+    background-position-y: -72px;
+  }
+}
+@keyframes island-creature-breathe {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -2px;
+  }
+}
+@keyframes water-glint-drift {
+  from {
+    translate: 0 0;
+    opacity: 0.28;
+  }
+  to {
+    translate: 10px 1px;
+    opacity: 0.66;
+  }
+}
+@keyframes campsite-ember-glow {
+  from {
+    opacity: 0.6;
+    scale: 0.8;
+  }
+  to {
+    opacity: 1;
+    scale: 1.3;
+  }
+}

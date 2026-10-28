@@ -1,13 +1,9 @@
 import {
-  Component,
-  lazy,
-  Suspense,
+  useLayoutEffect,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ErrorInfo,
-  type ReactNode,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { keccak256, toBytes } from 'viem';
@@ -44,14 +40,31 @@ import {
   visibleResidents,
   type Resident,
 } from '../game/islandPresentation';
-import { loadGuestGame, saveGuestGame } from '../persistence/localSave';
 import { playIslandSound } from '../game/sound';
 import { requireSuccessfulReceipt, transactionFailureMessage } from '../blockchain/transactions';
 import { IslandTerrain } from './IslandTerrain';
-
-const PuzzleGame = lazy(() =>
-  import('./PuzzleGame').then((module) => ({ default: module.PuzzleGame })),
-);
+import { EconomyPanel } from './EconomyPanel';
+import {
+  clickIslandHeart,
+  createEconomyState,
+  performRebirth,
+  productionPerSecond,
+  resetForNewSeason,
+  seasonIdAt,
+  seasonStartAt,
+  applyOfflineProgress,
+  type ActionResult,
+  type EconomyState,
+} from '../incremental/engine';
+import { formatValue } from '../incremental/decimal';
+import {
+  archiveIncompatibleSave,
+  loadGuestSave,
+  restoreGuestProgress,
+  saveGuestSave,
+} from '../persistence/localSave';
+import { LivingIslandGame } from './LivingIslandGame';
+import { OpeningReveal } from './OpeningReveal';
 
 const HABITATS: Array<{ id: Habitat; label: string; mark: string; tone: string }> = [
   { id: 'water', label: 'Water', mark: '≈', tone: 'water' },
@@ -93,77 +106,21 @@ function soundPreference(): boolean {
 }
 
 export function App() {
-  const [screen, setScreen] = useState<'island' | 'puzzle'>('island');
+  useLayoutEffect(() => {
+    document.body.classList.add('worldseed-app-scroll');
+    return () => document.body.classList.remove('worldseed-app-scroll');
+  }, []);
 
-  return screen === 'puzzle' ? (
-    <PuzzleLoadBoundary onBack={() => setScreen('island')} onRetry={() => window.location.reload()}>
-      <Suspense fallback={<div className="puzzle-loading">Opening the grove game…</div>}>
-        <PuzzleGame onBack={() => setScreen('island')} />
-      </Suspense>
-    </PuzzleLoadBoundary>
-  ) : (
-    <IslandGame onOpenPuzzle={() => setScreen('puzzle')} />
+  return (
+    <>
+      <OpeningReveal />
+      <LivingIslandGame />
+    </>
   );
 }
 
-interface PuzzleLoadBoundaryProps {
-  children: ReactNode;
-  onBack: () => void;
-  onRetry: () => void;
-}
-
-interface PuzzleLoadBoundaryState {
-  error: Error | null;
-}
-
-export class PuzzleLoadBoundary extends Component<
-  PuzzleLoadBoundaryProps,
-  PuzzleLoadBoundaryState
-> {
-  state: PuzzleLoadBoundaryState = { error: null };
-
-  static getDerivedStateFromError(error: Error): PuzzleLoadBoundaryState {
-    return { error };
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('The 2048 game module could not be loaded.', error, info.componentStack);
-  }
-
-  render() {
-    if (this.state.error) {
-      return (
-        <main className="puzzle-load-error" role="alert">
-          <section>
-            <p className="eyebrow">GAME SCREEN UNAVAILABLE</p>
-            <h1>The grove game did not load.</h1>
-            <p>
-              Your island is safe. Check your connection and try again, or return to the island.
-            </p>
-            <p className="puzzle-load-error__diagnostic">
-              Loading error: {this.state.error.message}
-            </p>
-            <div className="puzzle-load-error__actions">
-              <button type="button" onClick={this.props.onRetry}>
-                Reload and try again
-              </button>
-              <button type="button" onClick={this.props.onBack}>
-                Return to island
-              </button>
-            </div>
-            <details>
-              <summary>Show loading error details</summary>
-              <pre>{this.state.error.stack ?? this.state.error.message}</pre>
-            </details>
-          </section>
-        </main>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
+/** Retained as a compatibility reference; the restoration board is no longer the primary game. */
+export function LegacyRestorationGame() {
   const account = useAccount();
   const chainId = useChainId();
   const { connectAsync, connectors, isPending: connecting } = useConnect();
@@ -200,7 +157,11 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
     query: { enabled: Boolean(gameContractAddress && account.address) },
   });
   const { writeContractAsync } = useWriteContract();
-  const [game, setGame] = useState<GameState>(() => createGameState());
+  const [game, setGame] = useState<GameState>(() => createGameState(`guest-${Date.now()}`));
+  const [economy, setEconomy] = useState<EconomyState>(() =>
+    createEconomyState(seasonIdAt(Date.now())),
+  );
+  const nextSeasonStart = seasonStartAt(economy.seasonId + 1);
   const [chainCursor, setChainCursor] = useState(0n);
   const [pendingActions, setPendingActions] = useState<number[]>([]);
   const [transactionState, setTransactionState] = useState<
@@ -215,6 +176,9 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
   const [showSettings, setShowSettings] = useState(false);
   const [showIslandDetails, setShowIslandDetails] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [localSaveReady, setLocalSaveReady] = useState(false);
+  const [legacyRestoration, setLegacyRestoration] = useState<GameState | undefined>();
+  const [saveDecision, setSaveDecision] = useState<'legacy' | 'incompatible' | null>(null);
   const [saveState, setSaveState] = useState<'saving' | 'saved' | 'error'>('saving');
   const [shopHabitat, setShopHabitat] = useState<Habitat>('grass');
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -232,6 +196,8 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
   const [residentFacing, setResidentFacing] = useState<Record<string, -1 | 1>>({});
   const [walkingResidents, setWalkingResidents] = useState<string[]>([]);
   const boardRef = useRef<HTMLDivElement>(null);
+  const guestRestorationRef = useRef(game);
+  const lastEconomyCheckpointRef = useRef<number | null>(null);
   const residentLayerRef = useRef<HTMLDivElement>(null);
   const residentPositionsRef = useRef(residentPositions);
   const residentFacingRef = useRef(residentFacing);
@@ -251,12 +217,43 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
 
   useEffect(() => {
     let alive = true;
-    loadGuestGame()
-      .then((saved) => {
-        if (alive && saved?.demo) setGame(saved);
+    loadGuestSave()
+      .then(async (result) => {
+        if (!alive) return;
+        if (result.kind === 'current') {
+          const save = result.save;
+          const now = Date.now();
+          const restored = restoreGuestProgress(save, now);
+          // Commit the new timestamp together with the granted offline progress before exposing
+          // it, so a reload cannot claim the same interval twice.
+          await saveGuestSave(restored.state, restored.restoration, save.legacyRestoration, now);
+          if (!alive) return;
+          setEconomy(restored.state);
+          setGame(restored.restoration);
+          guestRestorationRef.current = restored.restoration;
+          setLegacyRestoration(save.legacyRestoration);
+          lastEconomyCheckpointRef.current = now;
+          setLocalSaveReady(true);
+          if (restored.seasonChanged) {
+            setNotice('A new weekly guest season has begun. The previous season was archived.');
+          } else if (restored.secondsApplied > 0) {
+            setNotice(
+              `Welcome back. Local offline growth was applied for ${Math.floor(restored.secondsApplied / 60)} minutes.`,
+            );
+          }
+        } else if (result.kind === 'legacy') {
+          setLegacyRestoration(result.restoration);
+          setSaveDecision('legacy');
+          setLocalSaveReady(true);
+        } else if (result.kind === 'incompatible') {
+          setSaveDecision('incompatible');
+        } else {
+          setLocalSaveReady(true);
+        }
       })
       .catch(() => {
-        if (alive) setNotice('Local save is unavailable here. Your current demo still works.');
+        if (alive)
+          setNotice('Local save is unavailable here. Guest play still works for this session.');
       })
       .finally(() => {
         if (alive) setLoaded(true);
@@ -276,15 +273,44 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
   );
 
   useEffect(() => {
-    if (!loaded || !game.demo) return;
+    if (!loaded || !localSaveReady || saveDecision) return;
     const timer = window.setTimeout(() => {
       setSaveState('saving');
-      saveGuestGame(game)
+      saveGuestSave(economy, guestRestorationRef.current, legacyRestoration)
         .then(() => setSaveState('saved'))
         .catch(() => setSaveState('error'));
-    }, 250);
+    }, 700);
     return () => window.clearTimeout(timer);
-  }, [game, loaded]);
+  }, [economy, game, legacyRestoration, loaded, localSaveReady, saveDecision]);
+
+  useEffect(() => {
+    if (game.demo) guestRestorationRef.current = game;
+  }, [game]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      const wallClockSeason = seasonIdAt(now);
+      if (wallClockSeason > economy.seasonId) {
+        lastEconomyCheckpointRef.current = now;
+        setEconomy((previous) => resetForNewSeason(previous, wallClockSeason));
+        setGame((previous) =>
+          previous.demo ? createGameState(`season-${wallClockSeason}`) : previous,
+        );
+        setNotice('A new weekly guest season has begun. The previous season was archived.');
+      } else if (wallClockSeason === economy.seasonId && game.demo) {
+        const previousCheckpoint = lastEconomyCheckpointRef.current ?? now;
+        lastEconomyCheckpointRef.current = now;
+        setEconomy((previous) =>
+          previous.seasonId === wallClockSeason
+            ? applyOfflineProgress(previous, previousCheckpoint, now).state
+            : previous,
+        );
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [economy.seasonId, game.demo, loaded]);
 
   const totalHealthy = useMemo(() => healthyCount(game.island.cells, game.unlockedThrough), [game]);
   const healthyForests = useMemo(
@@ -487,6 +513,61 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
     return () => window.removeEventListener('beforeunload', warnBeforeLeaving);
   }, [game.demo, pendingActions.length]);
 
+  function applyEconomyResult(result: ActionResult) {
+    const wallClockSeason = seasonIdAt(Date.now());
+    if (wallClockSeason !== economy.seasonId) {
+      if (wallClockSeason > economy.seasonId) {
+        setEconomy((previous) => resetForNewSeason(previous, wallClockSeason));
+        setGame((previous) =>
+          previous.demo ? createGameState(`season-${wallClockSeason}`) : previous,
+        );
+        setNotice('The season ended before that action. Your new guest season has started.');
+      } else {
+        setNotice(
+          'Your device clock is earlier than the active guest season; this action was not applied.',
+        );
+      }
+      return;
+    }
+    if (result.error) {
+      setNotice(result.error);
+      return;
+    }
+    setEconomy(result.state);
+    setNotice(result.events.map((event) => event.message).join(' ') || 'Island economy updated.');
+  }
+
+  function beginWithLegacyIsland(keepIsland: boolean) {
+    const oldIsland = legacyRestoration;
+    const restoration =
+      keepIsland && oldIsland ? oldIsland : createGameState(`guest-${Date.now()}`);
+    setGame(restoration);
+    guestRestorationRef.current = restoration;
+    setLegacyRestoration(oldIsland);
+    setEconomy(createEconomyState(seasonIdAt(Date.now())));
+    setSaveDecision(null);
+    setLocalSaveReady(true);
+    setNotice(
+      keepIsland
+        ? 'Older island kept as an optional restoration puzzle.'
+        : 'Older island kept safely; a fresh island is ready.',
+    );
+  }
+
+  async function beginAfterIncompatibleSave() {
+    try {
+      await archiveIncompatibleSave();
+      setEconomy(createEconomyState(seasonIdAt(Date.now())));
+      const restoration = createGameState(`guest-${Date.now()}`);
+      setGame(restoration);
+      guestRestorationRef.current = restoration;
+      setSaveDecision(null);
+      setLocalSaveReady(true);
+    } catch {
+      setNotice('Could not back up the older save, so it was left untouched.');
+    }
+  }
+
   function act(index: number) {
     const target = game.island.cells[index];
     if (tool === 'inspect') {
@@ -657,7 +738,12 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
 
   function restartDemo() {
     setGame(createGameState(`guest-${Date.now()}`, true));
-    setNotice('A new demo island is ready. Your wallet progress is never affected.');
+    setSelected('water');
+    setTool('place');
+    resetCamera();
+    setSceneEvent(null);
+    setShowIslandDetails(false);
+    setNotice('A fresh optional restoration island is ready. Your incremental run is unchanged.');
   }
 
   async function startOnchainIsland() {
@@ -841,9 +927,6 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
           <span>worldseed</span>
         </a>
         <div className="topbar-right">
-          <button className="mode-link" type="button" onClick={onOpenPuzzle}>
-            Play 2048 <span aria-hidden="true">↗</span>
-          </button>
           <button
             className="tutorial-button"
             type="button"
@@ -893,6 +976,33 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
       </header>
 
       <main id="top" className="main-layout">
+        {game.demo && (
+          <section className="incremental-hud" aria-label="Seasonal guest economy">
+            <div className="incremental-stat incremental-stat--nature">
+              <span>Nature</span>
+              <strong>{formatValue(economy.nature)}</strong>
+            </div>
+            <div className="incremental-stat">
+              <span>Nature per second</span>
+              <strong>
+                {formatValue(productionPerSecond(economy))}
+                <small> / sec</small>
+              </strong>
+            </div>
+            <div className="incremental-stat">
+              <span>This run</span>
+              <strong>
+                {formatValue(economy.runNature)}
+                <small> Nature</small>
+              </strong>
+            </div>
+            <div className="incremental-stat">
+              <span>Season rebirths</span>
+              <strong>{economy.seasonRebirths}</strong>
+            </div>
+            <span className="economy-guest-label">Guest · simulated points</span>
+          </section>
+        )}
         <section className="game-hud" aria-label="Quick island controls and status">
           <div className="habitat-toolbar" role="group" aria-label="Choose a habitat">
             {HABITATS.map((habitat) => (
@@ -901,7 +1011,7 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
                 className={`quick-habitat quick-habitat--${habitat.tone} ${selected === habitat.id && tool === 'place' ? 'quick-habitat--selected' : ''}`}
                 type="button"
                 aria-pressed={selected === habitat.id && tool === 'place'}
-                aria-label={`Select ${habitat.label}, ${game.demo ? 'unlimited demo supply' : `${game.inventory[habitat.id]} available`}`}
+                aria-label={`Select ${habitat.label}, ${game.inventory[habitat.id]} available`}
                 onClick={() => {
                   setTool('place');
                   setSelected(habitat.id);
@@ -909,7 +1019,7 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
               >
                 <span aria-hidden="true">{habitat.mark}</span>
                 <b>{habitat.label}</b>
-                <small>{game.demo ? '∞' : game.inventory[habitat.id]}</small>
+                <small>{game.inventory[habitat.id]}</small>
               </button>
             ))}
           </div>
@@ -959,33 +1069,39 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
         </section>
 
         <section className="game-layout" aria-label="Island restoration game">
-          <aside className="game-journal" aria-label="Quest journal">
-            <div className="game-panel-heading">
-              <span className="game-panel-kicker">QUEST JOURNAL</span>
-              <strong>Island restoration</strong>
-            </div>
-            <div className="journal-progress-copy">
-              <span>Healthy habitats</span>
-              <strong>
-                {totalHealthy}
-                <small> / 12</small>
-              </strong>
-            </div>
-            <div className="journal-progress-track" aria-hidden="true">
-              <span style={{ width: `${Math.min(100, (totalHealthy / 12) * 100)}%` }} />
-            </div>
-            <p>
-              {game.complete
-                ? 'The Island Heart is whole.'
-                : `Restore the island to uncover ${REGIONS[game.unlockedThrough + 1]?.name ?? 'the final reach'}.`}
-            </p>
-            <button
-              type="button"
-              className="journal-open-button"
-              onClick={() => setShowIslandDetails(true)}
-            >
-              Open journal <span aria-hidden="true">→</span>
-            </button>
+          <aside
+            className="game-journal game-journal--economy"
+            aria-label="Growth and restoration journal"
+          >
+            {game.demo ? (
+              <EconomyPanel
+                state={economy}
+                nextSeasonStart={nextSeasonStart}
+                onHeartClick={() => applyEconomyResult(clickIslandHeart(economy))}
+                onStateChange={applyEconomyResult}
+                onRebirth={() => applyEconomyResult(performRebirth(economy))}
+              />
+            ) : (
+              <p className="economy-wallet-notice">
+                The incremental economy is guest-only in this prototype. Your connected island and
+                contract rules are unchanged.
+              </p>
+            )}
+            <details className="restoration-journal">
+              <summary>Optional restoration puzzle · {totalHealthy} healthy tiles</summary>
+              <p>
+                {game.complete
+                  ? 'The Island Heart is whole.'
+                  : `Restore tiles to uncover ${REGIONS[game.unlockedThrough + 1]?.name ?? 'the final reach'}. This is optional and does not block rebirth.`}
+              </p>
+              <button
+                type="button"
+                className="journal-open-button"
+                onClick={() => setShowIslandDetails(true)}
+              >
+                Open restoration journal <span aria-hidden="true">→</span>
+              </button>
+            </details>
           </aside>
 
           <div className="board-column">
@@ -1121,8 +1237,8 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
                           key={index}
                           type="button"
                           role="gridcell"
-                          disabled={locked || cell.terrain === 'heart'}
-                          aria-label={`${regionName}, row ${cell.y + 1}, column ${cell.x + 1}${locked ? ', hidden by mist' : ''}${cell.habitat ? `, ${cell.habitat}${healthy ? ', healthy' : ', needs a neighbor'}` : ''}${previewCopy}`}
+                          disabled={locked && cell.terrain !== 'heart'}
+                          aria-label={`${regionName}, row ${cell.y + 1}, column ${cell.x + 1}${cell.terrain === 'heart' ? (game.demo ? ', Island Heart, click for 1 Nature' : ', Island Heart') : locked ? ', hidden by mist' : ''}${cell.habitat ? `, ${cell.habitat}${healthy ? ', healthy' : ', needs a neighbor'}` : ''}${previewCopy}`}
                           title={
                             locked
                               ? 'A little more restoration will lift the mist.'
@@ -1136,6 +1252,14 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
                           onBlur={() => setHoverIndex(null)}
                           onClick={(event) => {
                             if (suppressTileClickRef.current) return;
+                            if (cell.terrain === 'heart') {
+                              if (game.demo) applyEconomyResult(clickIslandHeart(economy));
+                              else
+                                setNotice(
+                                  'The incremental economy is available in Guest mode. Your connected island is unchanged.',
+                                );
+                              return;
+                            }
                             const bounds = boardRef.current?.getBoundingClientRect();
                             act(
                               bounds
@@ -1226,16 +1350,6 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
                 </div>
               </div>
               <div className="landmark-strip" aria-label="Island landmarks">
-                <button
-                  type="button"
-                  className="landmark landmark--shrine"
-                  aria-label="Open Seed Shrine 2048 grove game"
-                  onClick={onOpenPuzzle}
-                >
-                  <span aria-hidden="true">✧</span>
-                  <b>Seed Shrine</b>
-                  <small>2048 grove game</small>
-                </button>
                 <button
                   type="button"
                   className="landmark landmark--merchant"
@@ -1353,17 +1467,6 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
             </div>
             <button
               type="button"
-              className="location-button location-button--shrine"
-              onClick={onOpenPuzzle}
-            >
-              <span aria-hidden="true">✧</span>
-              <span>
-                <b>Seed Shrine</b>
-                <small>2048 grove game</small>
-              </span>
-            </button>
-            <button
-              type="button"
               className="location-button location-button--merchant"
               onClick={() => setShowMerchant(true)}
             >
@@ -1433,9 +1536,7 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
                             {habitat.mark}
                           </span>
                           <span className="inventory-name">{habitat.label}</span>
-                          <span className="inventory-count">
-                            {game.demo ? '∞' : game.inventory[habitat.id]}
-                          </span>
+                          <span className="inventory-count">{game.inventory[habitat.id]}</span>
                         </button>
                       ))}
                     </div>
@@ -1805,6 +1906,53 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
         </div>
       )}
 
+      {saveDecision && (
+        <div className="modal-backdrop" role="presentation">
+          <section
+            className="save-decision-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="save-decision-title"
+          >
+            <div className="card-kicker">LOCAL SAVE</div>
+            <h2 id="save-decision-title">
+              {saveDecision === 'legacy' ? 'Older island save found' : 'Unrecognized save format'}
+            </h2>
+            <p>
+              {saveDecision === 'legacy'
+                ? 'Your old restoration island will stay stored. Choose whether to open it as an optional puzzle or begin with a fresh island.'
+                : 'This save cannot be safely converted. It will remain untouched; back it up before beginning the new economy.'}
+            </p>
+            {saveDecision === 'legacy' ? (
+              <div className="save-decision-actions">
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => beginWithLegacyIsland(true)}
+                >
+                  Keep old island
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => beginWithLegacyIsland(false)}
+                >
+                  Start fresh
+                </button>
+              </div>
+            ) : (
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => void beginAfterIncompatibleSave()}
+              >
+                Back up old save and start
+              </button>
+            )}
+          </section>
+        </div>
+      )}
+
       {showTutorial && (
         <div
           className="modal-backdrop"
@@ -1831,7 +1979,7 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
               <span className="eyebrow-line" /> YOUR FIRST FEW STEPS
             </div>
             <h2 id="tutorial-title">
-              Let the island
+              Grow a living island
               <br />
               <em>show you the way.</em>
             </h2>
@@ -1839,39 +1987,39 @@ function IslandGame({ onOpenPuzzle }: { onOpenPuzzle: () => void }) {
               <li>
                 <span>01</span>
                 <div>
-                  <strong>Begin with water and grass</strong>
+                  <strong>Gather Nature</strong>
                   <p>
-                    Grass is healthy when it touches water. Place two healthy habitats to lift the
-                    first mist.
+                    Click the Island Heart to collect 1 Nature. Nature is also shown in the top bar.
                   </p>
                 </div>
               </li>
               <li>
                 <span>02</span>
                 <div>
-                  <strong>Invite the forest</strong>
+                  <strong>Grow habitats</strong>
                   <p>
-                    Forest needs a neighboring water tile and a healthy grass tile. Healthy habitats
-                    unlock new regions.
+                    Buy Water, Grass, and Forest levels to generate Nature every second. Neighbors
+                    and milestones improve production; use bulk-buy buttons when you can.
                   </p>
                 </div>
               </li>
               <li>
                 <span>03</span>
                 <div>
-                  <strong>Reach the Island Heart</strong>
+                  <strong>Rebirth to grow stronger</strong>
                   <p>
-                    Gather habitats freely, keep your milestones, and make a healthy forest
-                    connection beside the Heart.
+                    Reach the run goal to reset your habitats for seasonal PP and simulated CP.
+                    Spend PP on upgrades before your next run.
                   </p>
                 </div>
               </li>
             </ol>
             <button className="primary-button" type="button" onClick={() => setShowTutorial(false)}>
-              Let’s restore <span>→</span>
+              Start growing <span>→</span>
             </button>
             <p className="modal-footnote">
-              This guest island uses demo resources and never creates wallet rewards.
+              The 7×7 restoration puzzle remains optional. Guest PP and CP are local simulations,
+              not wallet rewards.
             </p>
           </section>
         </div>

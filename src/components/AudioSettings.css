@@ -1,0 +1,75 @@
+.audio-settings {
+  position: relative;
+  color: #3d6245;
+  font: inherit;
+  z-index: 15;
+}
+
+.audio-settings summary {
+  display: grid;
+  min-height: 36px;
+  place-items: center;
+  padding: 0 12px;
+  border: 1px solid rgba(108, 147, 105, 0.28);
+  border-radius: 999px;
+  background: #f7f7e8;
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.audio-settings summary::-webkit-details-marker {
+  display: none;
+}
+
+.audio-settings summary:focus-visible,
+.audio-settings button:focus-visible,
+.audio-settings input:focus-visible {
+  outline: 3px solid #78a96b;
+  outline-offset: 2px;
+}
+
+.audio-settings-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  width: min(260px, calc(100vw - 32px));
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(73, 111, 72, 0.2);
+  border-radius: 14px;
+  background: #fffdf1;
+  box-shadow: 0 12px 30px rgba(46, 70, 47, 0.16);
+}
+
+.audio-settings-panel button {
+  min-height: 36px;
+  border: 1px solid #c4d5b7;
+  border-radius: 9px;
+  background: #edf4e5;
+  color: #34583b;
+  font: inherit;
+  cursor: pointer;
+}
+
+.audio-settings-panel label {
+  display: grid;
+  gap: 6px;
+  color: #465b44;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.audio-settings-panel input {
+  width: 100%;
+  accent-color: #678f58;
+}
+
+@media (max-width: 520px) {
+  .audio-settings-panel {
+    position: fixed;
+    top: 64px;
+    right: 12px;
+  }
+}

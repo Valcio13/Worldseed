@@ -30,6 +30,15 @@ interface VerifiedSnapshot {
   scoreTier: number;
 }
 
+export interface V3IslandSnapshot {
+  nature: string;
+  earnedNature: string;
+  productionPerSecond: string;
+  /** Habitat sum capped to the existing 15-level visual-stage ceiling. */
+  visualHabitatLevelCount: number;
+  scoreTier: number;
+}
+
 const HABITAT_PRESENTATION: Record<V3HabitatKind, { name: string; symbol: string }> = {
   water: { name: 'Water', symbol: '≈' },
   grass: { name: 'Grass', symbol: '✿' },
@@ -81,7 +90,15 @@ function productionPerSecond(state: V3VerifiedCanonicalState): bigint {
     : productionPerSecondV2(state);
 }
 
-export function V3VerifiedGameplay({ runId, sessionToken }: V3VerifiedGameplayProps) {
+export function V3VerifiedGameplay({
+  runId,
+  sessionToken,
+  onSnapshotChange,
+  onHeartActionReady,
+}: V3VerifiedGameplayProps & {
+  onSnapshotChange?: (snapshot: V3IslandSnapshot | null) => void;
+  onHeartActionReady?: (action: (() => void) | null) => void;
+}) {
   const queue = useV3Commands(runId, sessionToken);
   const recoverState = queue.recoverState;
   const [snapshot, setSnapshot] = useState<VerifiedSnapshot | null>(null);
@@ -93,7 +110,17 @@ export function V3VerifiedGameplay({ runId, sessionToken }: V3VerifiedGameplayPr
     acceptedSequence.current = next.state.sequence;
     setSnapshot(next);
     setSnapshotError(null);
-  }, []);
+    onSnapshotChange?.({
+      nature: formatNatureAtoms(next.state.natureAtoms),
+      earnedNature: formatNatureAtoms(next.state.earnedNatureAtoms),
+      productionPerSecond: formatNatureAtoms(productionPerSecond(next.state)),
+      visualHabitatLevelCount: Object.values(next.state.habitats).reduce(
+        (total, level) => (total >= 15 - level ? 15 : total + level),
+        0,
+      ),
+      scoreTier: next.scoreTier,
+    });
+  }, [onSnapshotChange]);
 
   useEffect(() => {
     let current = true;
@@ -137,13 +164,24 @@ export function V3VerifiedGameplay({ runId, sessionToken }: V3VerifiedGameplayPr
   );
   const actionsDisabled = !snapshot || queue.state?.recoveringCursor || queue.state?.isSubmitting || hasUnresolvedCommand;
 
-  async function send(command: V3GameplayCommand) {
+  const send = useCallback(async (command: V3GameplayCommand) => {
     try {
       await queue.submitCommand(command);
     } catch {
       // The queue retains the verifier error/status and renders its retry path.
     }
-  }
+  }, [queue.submitCommand]);
+
+  const submitHeartClick = useCallback(() => {
+    void send({ type: 'heart-click' });
+  }, [send]);
+
+  useEffect(() => {
+    onHeartActionReady?.(actionsDisabled ? null : submitHeartClick);
+    return () => onHeartActionReady?.(null);
+  }, [actionsDisabled, onHeartActionReady, submitHeartClick]);
+
+  useEffect(() => () => onSnapshotChange?.(null), [onSnapshotChange]);
 
   return (
     <section className="v3-integration-auth" aria-label="Verified gameplay">
@@ -157,27 +195,6 @@ export function V3VerifiedGameplay({ runId, sessionToken }: V3VerifiedGameplayPr
 
       {snapshot && (
         <>
-          <div className="v3-integration-section-heading" aria-label="Verified resources">
-            <span>Nature</span>
-            <strong data-testid="verified-nature">{formatNatureAtoms(snapshot.state.natureAtoms)}</strong>
-          </div>
-          <p>
-            Production: <strong data-testid="verified-production">
-              {formatNatureAtoms(productionPerSecond(snapshot.state))} / sec
-            </strong>
-          </p>
-          <p>Earned this run: {formatNatureAtoms(snapshot.state.earnedNatureAtoms)} Nature</p>
-
-          <button
-            type="button"
-            className="v3-integration-action"
-            disabled={actionsDisabled}
-            onClick={() => void send({ type: 'heart-click' })}
-            aria-label="Verified Heart click"
-          >
-            Click Island Heart · +1 Nature
-          </button>
-
           <div aria-label="Verified habitat purchases">
             {habitatsForVerifiedState(snapshot.state).map((id) => {
               const { name, symbol } = HABITAT_PRESENTATION[id];

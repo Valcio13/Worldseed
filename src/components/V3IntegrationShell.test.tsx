@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { V3IntegrationShell } from './V3IntegrationShell';
+import { V3IntegrationShell, V3IslandProgression } from './V3IntegrationShell';
 
 const {
   useV3RunMock,
@@ -166,6 +166,15 @@ describe('V3IntegrationShell', () => {
     connectAsyncMock.mockReset();
     disconnectMock.mockReset();
     switchChainAsyncMock.mockReset();
+  });
+
+  it('embeds verified progression in one collapsible island panel without mode navigation', () => {
+    render(<V3IslandProgression onSnapshotChange={vi.fn()} onHeartActionReady={vi.fn()} />);
+
+    expect(screen.getByText('Verified mode · Hemi Sepolia')).toBeTruthy();
+    expect(screen.getByText('Read-only V3 status')).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Worldseed game mode' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Connect wallet' })).toBeNull();
   });
 
   it('opens on the existing guest game without mounting wallet-linked V3 state', () => {
@@ -393,6 +402,8 @@ describe('V3IntegrationShell', () => {
     expect(verifiedGameplayMock).toHaveBeenCalledWith({
       runId: '7',
       sessionToken: 'verified-session',
+      onSnapshotChange: undefined,
+      onHeartActionReady: undefined,
     });
     expect(await screen.findByRole('region', { name: 'Verified gameplay' })).toBeTruthy();
   });

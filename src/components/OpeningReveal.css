@@ -1,0 +1,58 @@
+.opening-reveal {
+  --living-green: #426b50;
+  --living-ink: #f7f5ec;
+  position: fixed;
+  z-index: 20000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: var(--living-ink);
+  background: var(--living-green);
+  animation: opening-reveal-lift 620ms cubic-bezier(0.76, 0, 0.24, 1) 880ms forwards;
+  contain: paint;
+  will-change: transform;
+}
+
+.opening-reveal-brand.living-brand {
+  gap: 16px;
+  color: var(--living-ink);
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(34px, 6vw, 54px);
+  font-weight: 800;
+  animation: opening-logo-appear 380ms ease-out 80ms both;
+}
+
+.opening-reveal .living-brand-seed {
+  width: clamp(42px, 6vw, 56px);
+  height: clamp(42px, 6vw, 56px);
+  border-color: #a8be9a;
+  color: #f7f5ec;
+  background: #a8be9a;
+  font-size: clamp(20px, 3vw, 27px);
+}
+
+@keyframes opening-logo-appear {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes opening-reveal-lift {
+  to {
+    transform: translateY(-100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .opening-reveal {
+    display: none;
+    animation: none;
+    will-change: auto;
+  }
+}

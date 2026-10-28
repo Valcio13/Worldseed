@@ -3,6 +3,7 @@ import { useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import { V3RunControls } from '../v3/components/V3RunControls';
 import { V3StatusPanel } from '../v3/components/V3StatusPanel';
 import { V3VerifiedGameplay } from '../v3/components/V3VerifiedGameplay';
+import type { V3IslandSnapshot } from '../v3/components/V3VerifiedGameplay';
 import { useStartRunFlow } from '../v3/hooks/useStartRunFlow';
 import { useV3Auth } from '../v3/hooks/useV3Auth';
 import { useV3Run } from '../v3/hooks/useV3Run';
@@ -42,7 +43,37 @@ export function V3IntegrationShell({ guestGame }: V3IntegrationShellProps) {
   );
 }
 
-function VerifiedProgression({ onReturnToGuest }: { onReturnToGuest: () => void }) {
+/** Verified wallet flow embedded alongside the guest island, without replacing its screen. */
+export function V3IslandProgression({
+  onSnapshotChange,
+  onHeartActionReady,
+}: {
+  onSnapshotChange: (snapshot: V3IslandSnapshot | null) => void;
+  onHeartActionReady: (action: (() => void) | null) => void;
+}) {
+  return (
+    <details className="v3-island-mode" open>
+      <summary>Verified mode · Hemi Sepolia</summary>
+      <VerifiedProgression
+        compact
+        onSnapshotChange={onSnapshotChange}
+        onHeartActionReady={onHeartActionReady}
+      />
+    </details>
+  );
+}
+
+function VerifiedProgression({
+  onReturnToGuest,
+  compact = false,
+  onSnapshotChange,
+  onHeartActionReady,
+}: {
+  onReturnToGuest?: () => void;
+  compact?: boolean;
+  onSnapshotChange?: (snapshot: V3IslandSnapshot | null) => void;
+  onHeartActionReady?: (action: (() => void) | null) => void;
+}) {
   const runState = useV3Run();
   const auth = useV3Auth();
   const settlement = useV3Settlement(auth.isAuthenticated ? auth.sessionToken : null);
@@ -170,28 +201,32 @@ function VerifiedProgression({ onReturnToGuest }: { onReturnToGuest: () => void 
                 : null;
 
   return (
-    <main className="v3-integration-page">
+    <section className={`v3-integration-page${compact ? ' v3-integration-page--embedded' : ''}`}>
       <header className="v3-integration-heading">
         <div>
           <p>WORLDSEED V3</p>
           <h1>Verified progression</h1>
         </div>
-        <div className="v3-integration-heading-actions">
-          <button type="button" onClick={() => void handleWalletAction()} disabled={walletBusy}>
-            {connecting
-              ? 'Connecting wallet…'
-              : switching
-                ? 'Switching network…'
-                : !runState.wallet
-                  ? 'Connect wallet'
-                  : !runState.isCorrectChain
-                    ? 'Switch to Hemi Sepolia'
-                    : `Disconnect ${runState.wallet.slice(0, 6)}…${runState.wallet.slice(-4)}`}
-          </button>
-          <button type="button" onClick={onReturnToGuest}>
-            Return to guest game
-          </button>
-        </div>
+        {!compact && (
+          <div className="v3-integration-heading-actions">
+            <button type="button" onClick={() => void handleWalletAction()} disabled={walletBusy}>
+              {connecting
+                ? 'Connecting wallet…'
+                : switching
+                  ? 'Switching network…'
+                  : !runState.wallet
+                    ? 'Connect wallet'
+                    : !runState.isCorrectChain
+                      ? 'Switch to Hemi Sepolia'
+                      : `Disconnect ${runState.wallet.slice(0, 6)}…${runState.wallet.slice(-4)}`}
+            </button>
+            {onReturnToGuest && (
+              <button type="button" onClick={onReturnToGuest}>
+                Return to guest game
+              </button>
+            )}
+          </div>
+        )}
       </header>
       <p className="v3-integration-explanation">
         Guest play is available without a wallet. Verified progress is separate and requires a
@@ -305,6 +340,8 @@ function VerifiedProgression({ onReturnToGuest }: { onReturnToGuest: () => void 
           key={activeVerifiedRunId}
           runId={activeVerifiedRunId}
           sessionToken={auth.sessionToken}
+          onSnapshotChange={onSnapshotChange}
+          onHeartActionReady={onHeartActionReady}
         />
       )}
 
@@ -320,6 +357,6 @@ function VerifiedProgression({ onReturnToGuest }: { onReturnToGuest: () => void 
             Retry Start Run
           </button>
         )}
-    </main>
+    </section>
   );
 }

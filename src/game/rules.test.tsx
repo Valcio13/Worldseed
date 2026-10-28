@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { WagmiProvider } from 'wagmi';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { App, PuzzleLoadBoundary } from '../components/App';
+import { App } from '../components/App';
 import { wagmiConfig } from '../blockchain/config';
 import witnessVector from '../../shared/witness-v1.json';
 import { generateIsland, WITNESS } from './generateIsland';

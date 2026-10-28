@@ -34,6 +34,7 @@ vi.mock('../api', async () => {
 });
 
 const wallet = '0x1234567890123456789012345678901234567890' as const;
+const otherWallet = '0x9876543210987654321098765432109876543210' as const;
 const transactionHash = `0x${'12'.repeat(32)}` as `0x${string}`;
 const zeroHash = `0x${'00'.repeat(32)}` as const;
 
@@ -116,5 +117,20 @@ describe('useV3Settlement pending receipt recovery', () => {
     expect(mocks.writeContractAsync).toHaveBeenCalledOnce();
 
     await waitFor(() => expect(mocks.getTransactionReceipt).toHaveBeenCalled());
+  });
+
+  it('clears the previous wallet transaction status when switching to a wallet without a pending settlement', async () => {
+    const key = `worldseed:v3:pending-settlement:${wallet}`;
+    localStorage.setItem(key, JSON.stringify({ wallet, action: 'recordPoints', transactionHash }));
+    const { result, rerender } = renderHook(() => useV3Settlement('session-token'));
+
+    expect(result.current.status).toBe('uncertain');
+    vi.mocked(useAccount).mockReturnValue({ address: otherWallet } as never);
+    rerender();
+
+    await waitFor(() => expect(result.current.status).toBe('idle'));
+    expect(result.current.transactionHash).toBeNull();
+    expect(result.current.canSettle).toBe(true);
+    expect(localStorage.getItem(key)).not.toBeNull();
   });
 });

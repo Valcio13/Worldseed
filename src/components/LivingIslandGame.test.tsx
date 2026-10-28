@@ -103,6 +103,11 @@ describe('Living Island guest persistence', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
+    expect(document.querySelector('.living-notice')).toHaveClass('living-notice--exiting');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(180);
+    });
     expect(screen.queryByText('Welcome back. Your island grew while you were away.')).not.toBeInTheDocument();
   });
 

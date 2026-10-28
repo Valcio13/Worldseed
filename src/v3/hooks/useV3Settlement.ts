@@ -250,13 +250,14 @@ export function useV3Settlement(sessionToken: string | null) {
   useEffect(() => {
     const pending = readPendingSettlement(account.address);
     pendingTransactionRef.current = pending;
-    if (!pending) return;
-    setState({
-      status: 'uncertain',
-      action: pending.action,
-      transactionHash: pending.transactionHash,
-      error: 'Checking the previous transaction before allowing another submission.',
-    });
+    setState(pending
+      ? {
+          status: 'uncertain',
+          action: pending.action,
+          transactionHash: pending.transactionHash,
+          error: 'Checking the previous transaction before allowing another submission.',
+        }
+      : initialState);
   }, [account.address]);
 
   useEffect(() => {

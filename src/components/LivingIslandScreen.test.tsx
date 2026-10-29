@@ -121,7 +121,7 @@ describe('Living Island screen', () => {
     expect(container.querySelector('.living-brand-seed')).not.toBeInTheDocument();
   });
 
-  it('places the resource bar above the aligned island and control columns', () => {
+  it('keeps the resource bar with the island column and the control panel beside it', () => {
     const { container } = renderScreen(createEconomyState(1));
     const layout = container.querySelector<HTMLElement>('.living-desktop-layout');
     const islandColumn = container.querySelector<HTMLElement>('.living-island-column');
@@ -129,12 +129,12 @@ describe('Living Island screen', () => {
 
     expect(layout).toContainElement(islandColumn);
     expect(layout).toContainElement(controlPanel);
-    expect(layout?.firstElementChild).toBe(screen.getByRole('region', { name: 'Island resources' }));
-    expect(islandColumn).not.toContainElement(screen.getByRole('region', { name: 'Island resources' }));
+    expect(islandColumn).toContainElement(screen.getByRole('region', { name: 'Island resources' }));
     expect(islandColumn).toContainElement(screen.getByRole('region', { name: /Living Island/ }));
     expect(controlPanel).toContainElement(container.querySelector('.living-rebirth-card'));
     expect(controlPanel).toContainElement(container.querySelector('.living-shop'));
     expect(controlPanel).toContainElement(container.querySelector('.living-upgrades-card'));
+    expect(container.querySelector('.living-shop .living-resource-chip')).not.toBeInTheDocument();
     expect(container.querySelectorAll('.living-scene')).toHaveLength(1);
     expect(container.querySelectorAll('.living-control-panel')).toHaveLength(1);
   });
@@ -540,6 +540,20 @@ describe('Living Island screen', () => {
     expect(onStateChange).toHaveBeenCalledOnce();
     expect(onStateChange.mock.calls[0]?.[0].state.habitats.water).toBe(1);
     expect(screen.getAllByText('Level 0 · 0 Nature/sec')).toHaveLength(6);
+  });
+
+  it('offers fixed 1x, 10x, 100x, and max habitat purchase quantities', () => {
+    const state = { ...createEconomyState(1), nature: valueFromNumber(1_000_000_000) };
+    const onStateChange = vi.fn();
+    renderScreen(state, onStateChange);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Buy 10 Water' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Buy 100 Water' }));
+
+    expect(onStateChange).toHaveBeenCalledTimes(2);
+    expect(onStateChange.mock.calls[0]?.[0].state.habitats.water).toBe(10);
+    expect(onStateChange.mock.calls[1]?.[0].state.habitats.water).toBe(100);
+    expect(screen.getByRole('button', { name: 'Buy maximum Water' })).toBeEnabled();
   });
 
   it('shows and purchases all six habitats through the guest economy when affordable', () => {

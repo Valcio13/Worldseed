@@ -1,22 +1,22 @@
 .living-game {
-  --living-ivory: #f7f5ec;
-  --living-card: #fffef8;
-  --living-surface: #f0f1e8;
-  --living-warm-surface: #f4eedb;
-  --living-sage: #a8be9a;
+  --living-ivory: #f7f2df;
+  --living-card: #fffbed;
+  --living-surface: #f2ecd8;
+  --living-warm-surface: #eee5c9;
+  --living-sage: #8eaa78;
   --living-green: #426b50;
   --living-green-hover: #365b43;
-  --living-green-soft: #edf3e7;
-  --living-green-soft-hover: #e4eddb;
+  --living-green-soft: #edf0df;
+  --living-green-soft-hover: #e3e9d2;
   --living-meadow: #86b978;
   --living-aqua: #83bec1;
-  --living-gold: #c9ad65;
+  --living-gold: #c29d4d;
   --living-gold-ink: #725a2b;
   --living-sand: #e9dec3;
   --living-ink: #294d3d;
-  --living-muted: #5e6f63;
+  --living-muted: #687666;
   --living-disabled: #607064;
-  --living-line: #d9e0d2;
+  --living-line: #d9cfaf;
   min-height: 100vh;
   color: var(--living-ink);
   background: var(--living-ivory);
@@ -679,6 +679,66 @@
   background: #eee5c9;
   font-size: 11px;
   line-height: 1.5;
+}
+
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog) {
+  border-color: #718e70;
+  color: #f1f1e6;
+  background: #1b362a;
+  box-shadow: 0 0 0 4px rgb(17 34 25 / 35%), 0 24px 80px rgb(3 12 8 / 62%);
+}
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog)::backdrop {
+  background: rgb(5 16 11 / 78%);
+}
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog) > header {
+  border-bottom-color: #496653;
+  background: linear-gradient(110deg, #284a37, #203d2f);
+}
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog) h2,
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog) .living-how-to-play-content li strong {
+  color: #f1f1e6;
+}
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog) .living-eyebrow {
+  color: #b9ca9a;
+}
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog) > header button {
+  border-color: #668266;
+  color: #f1f1e6;
+  background: #355642;
+  box-shadow: 0 2px 0 #1b3024;
+}
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog) .living-how-to-play-content {
+  background: radial-gradient(ellipse at 90% 100%, rgb(91 108 61 / 16%), transparent 48%), #1b362a;
+}
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog) .living-how-to-play-intro {
+  border-color: #496653;
+  color: #dce5d7;
+  background: #294737;
+  box-shadow: inset 0 -2px 0 rgb(10 22 15 / 18%);
+}
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog) .living-how-to-play-content li {
+  border-color: #496653;
+  border-left-color: #8eaa78;
+  background: linear-gradient(100deg, #294737, #243f31);
+  box-shadow: 0 2px 0 rgb(8 18 12 / 28%);
+}
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog) .living-how-to-play-content li:hover {
+  border-left-color: #e0c97f;
+}
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog) .living-how-to-play-content li::before {
+  border-color: #355642;
+  color: #f1f1e6;
+  background: linear-gradient(145deg, #769b67, #426b50);
+  box-shadow: 0 2px 0 #172e22;
+}
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog) .living-how-to-play-content li span {
+  color: #b4c3b5;
+}
+:root[data-theme='dark'] .living-how-to-play-dialog:not(.living-leaderboard-dialog) .living-how-to-play-note {
+  border-color: #786b42;
+  border-left-color: #c9ad65;
+  color: #e4dcbf;
+  background: #48432f;
 }
 .living-save {
   gap: 7px;
@@ -1799,13 +1859,14 @@
   font-size: 10px;
 }
 .living-habitat-actions {
-  display: flex;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
 }
 .living-habitat-actions button {
-  min-width: 66px;
+  min-width: 42px;
+  padding: 4px 5px;
   min-height: 38px;
-  padding: 4px 9px;
   border: 1px solid var(--living-sage);
   border-radius: 7px;
   color: var(--living-green);
@@ -2342,9 +2403,6 @@
     align-items: start;
     gap: clamp(16px, 2vw, 28px);
   }
-  .living-desktop-layout > .living-resource-bar {
-    grid-column: 1 / -1;
-  }
   .living-island-column {
     display: flex;
     min-height: 0;
@@ -2378,10 +2436,11 @@
     padding: 9px 8px;
   }
   .living-control-panel .living-habitat-actions {
+    min-width: 184px;
     gap: 4px;
   }
   .living-control-panel .living-habitat-actions button {
-    min-width: 64px;
+    min-width: 0;
     min-height: 38px;
     padding: 3px 6px;
   }
@@ -2644,7 +2703,7 @@
     gap: 4px;
   }
   .living-habitat-actions button {
-    min-width: 49px;
+    min-width: 42px;
     min-height: 35px;
     padding: 3px 5px;
     font-size: 10px;

@@ -178,9 +178,9 @@ describe('Living Island verified controls', () => {
     const { container } = renderProgression();
     expect(container.querySelector('.v3-living-account')?.hasAttribute('open')).toBe(false);
     expect(container.querySelector('.v3-advanced-activity')?.hasAttribute('open')).toBe(false);
-    expect(screen.getByText('Advanced / Activity')).toBeTruthy();
+    expect(screen.getByText('Advanced')).toBeTruthy();
 
-    fireEvent.click(screen.getByText('Advanced / Activity'));
+    fireEvent.click(screen.getByText('Advanced'));
     expect(container.querySelector('.v3-advanced-activity')?.hasAttribute('open')).toBe(true);
     fireEvent.click(screen.getByText('Live account'));
     expect(screen.getByRole('button', { name: 'Connect wallet' })).toBeTruthy();
@@ -249,7 +249,7 @@ describe('Living Island verified controls', () => {
     expect(disconnect).toHaveBeenCalledOnce();
   });
 
-  it('keeps an active verified run inside Advanced / Activity rather than a second dashboard', () => {
+  it('keeps an active verified run inside Advanced rather than a second dashboard', () => {
     useV3RunMock.mockReturnValue(runState({
       wallet: '0x0000000000000000000000000000000000000001',
       runId: 7n,
@@ -267,7 +267,7 @@ describe('Living Island verified controls', () => {
     expect(verifiedGameplayMock).toHaveBeenCalledWith(expect.objectContaining({
       runId: '7', sessionToken: 'session-token',
     }));
-    fireEvent.click(screen.getByText('Advanced / Activity'));
+    fireEvent.click(screen.getByText('Advanced'));
     expect(screen.getByRole('region', { name: 'Verified runtime' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Verified Progression' })).toBeNull();
   });

@@ -475,7 +475,7 @@ function VerifiedProgression({
       )}
 
       <details className="v3-advanced-activity">
-        <summary>Advanced / Activity</summary>
+        <summary>Advanced</summary>
         <div className="v3-advanced-panel">
         {settlement.status !== 'idle' && (
           <p className={`v3-living-flow v3-living-flow--${transactionState}`} role={settlement.status === 'failed' || settlement.status === 'uncertain' ? 'alert' : 'status'} aria-live="polite">

@@ -1,11 +1,11 @@
 :root {
-  --worldseed-scroll-track: #e6e9dd;
-  --worldseed-scroll-thumb: #aab99c;
-  --worldseed-scroll-thumb-hover: #7f9a73;
-  --worldseed-bg-glow: rgba(239, 246, 220, 0.92);
-  --worldseed-bg-top: #d9ead5;
-  --worldseed-bg-middle: #edf1d9;
-  --worldseed-bg-bottom: #c9dfc8;
+  --worldseed-scroll-track: #eee5c9;
+  --worldseed-scroll-thumb: #b8aa79;
+  --worldseed-scroll-thumb-hover: #8eaa78;
+  --worldseed-bg-glow: rgba(255, 251, 237, 0.92);
+  --worldseed-bg-top: #eee5c9;
+  --worldseed-bg-middle: #f7f2df;
+  --worldseed-bg-bottom: #e7dfc3;
 }
 
 @property --worldseed-bg-glow {

@@ -8,8 +8,11 @@ const MAX_EVENTS_PER_WRITE = 90;
 export interface LeaderboardChain {
   getLeaderboardHead(): Promise<{
     seasonId: bigint;
+    deploymentSeasonId: bigint;
     confirmedBlock: bigint;
     confirmedBlockHash: Hex;
+    confirmedTimestamp: bigint;
+    seasonEndsAt: bigint;
     communityCP: bigint;
     communityCPCap: bigint;
   }>;
@@ -41,6 +44,13 @@ function safeNumber(value: bigint): number {
   return number;
 }
 
+export function getContractSeasonNumber(globalSeasonId: bigint, deploymentSeasonId: bigint): bigint {
+  if (globalSeasonId < deploymentSeasonId) {
+    throw new Error('Current season predates the contract deployment season.');
+  }
+  return globalSeasonId - deploymentSeasonId + 1n;
+}
+
 /** Bounded, resumable index of confirmed settlement events for the active season. */
 export class SeasonalLeaderboard {
   constructor(
@@ -54,6 +64,7 @@ export class SeasonalLeaderboard {
 
   async getCurrentSeason() {
     const head = await this.chain.getLeaderboardHead();
+    const seasonNumber = getContractSeasonNumber(head.seasonId, head.deploymentSeasonId);
     const key = [this.chainId, this.contract.toLowerCase()];
     assertD1(
       await this.db
@@ -202,6 +213,9 @@ export class SeasonalLeaderboard {
       }));
     return {
       seasonId: head.seasonId.toString(),
+      seasonNumber: seasonNumber.toString(),
+      confirmedTimestamp: head.confirmedTimestamp.toString(),
+      seasonEndsAt: head.seasonEndsAt.toString(),
       communityCP: head.communityCP.toString(),
       communityCPCap: head.communityCPCap.toString(),
       entries: sorted,

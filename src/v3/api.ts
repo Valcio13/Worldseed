@@ -277,6 +277,10 @@ export interface V3SeasonalLeaderboardEntry {
 
 export interface V3SeasonalLeaderboardResponse {
   seasonId: string;
+  /** Human-facing contract-relative season count; seasonId remains the global onchain week ID. */
+  seasonNumber: string;
+  confirmedTimestamp: string;
+  seasonEndsAt: string;
   communityCP: string;
   communityCPCap: string;
   entries: V3SeasonalLeaderboardEntry[];

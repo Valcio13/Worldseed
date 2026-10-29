@@ -114,14 +114,14 @@ const ISLAND_EDGE_DETAIL_COUNT: Record<IslandGrowthStage, number> = {
   flourishing: 8,
 };
 
-const ISLAND_CREATURES: Record<IslandGrowthStage, Array<'moss' | 'pip' | 'luma'>> = {
+const ISLAND_CREATURES: Record<IslandGrowthStage, IslandCreatureKind[]> = {
   seed: [],
   sprout: ['moss'],
-  growing: ['moss', 'pip'],
-  flourishing: ['moss', 'pip', 'luma'],
+  growing: ['moss', 'pip', 'caretaker'],
+  flourishing: ['moss', 'pip', 'luma', 'caretaker', 'villager'],
 };
 
-type IslandCreatureKind = 'moss' | 'pip' | 'luma';
+type IslandCreatureKind = 'moss' | 'pip' | 'luma' | 'caretaker' | 'villager';
 type CreaturePosition = { left: number; top: number };
 type CreatureWanderArea = {
   start: CreaturePosition;
@@ -145,6 +145,14 @@ const CREATURE_WANDER_AREAS: Record<
   luma: {
     desktop: { start: { left: 69, top: 55 }, left: [67, 75], top: [52, 61], walkMs: 1650 },
     mobile: { start: { left: 78, top: 45 }, left: [76, 80], top: [43, 50], walkMs: 1450 },
+  },
+  caretaker: {
+    desktop: { start: { left: 36, top: 73 }, left: [33, 40], top: [69, 76], walkMs: 1550 },
+    mobile: { start: { left: 12, top: 72 }, left: [10, 16], top: [69, 75], walkMs: 1350 },
+  },
+  villager: {
+    desktop: { start: { left: 81, top: 63 }, left: [78, 84], top: [59, 66], walkMs: 1750 },
+    mobile: { start: { left: 85, top: 63 }, left: [82, 88], top: [60, 66], walkMs: 1500 },
   },
 };
 
@@ -175,6 +183,48 @@ function leaderboardCPPercent(current: string | undefined, target: string | unde
   } catch {
     return 0;
   }
+}
+
+function formatCP(value: string | undefined): string {
+  try {
+    return BigInt(value ?? '0').toLocaleString();
+  } catch {
+    return '—';
+  }
+}
+
+function formatSeasonDateRange(seasonEndsAt: string | undefined): string {
+  if (!seasonEndsAt) return 'UTC dates loading';
+  try {
+    const end = Number(BigInt(seasonEndsAt)) * 1_000;
+    const start = end - 7 * 24 * 60 * 60 * 1_000;
+    const date = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    return `${date.format(start)} – ${date.format(end)} UTC`;
+  } catch {
+    return 'UTC dates unavailable';
+  }
+}
+
+function formatSeasonCountdown(secondsRemaining: number): string {
+  const remaining = Math.max(0, Math.floor(secondsRemaining));
+  const days = Math.floor(remaining / 86_400);
+  const hours = Math.floor((remaining % 86_400) / 3_600);
+  const minutes = Math.floor((remaining % 3_600) / 60);
+  const seconds = remaining % 60;
+  return days > 0
+    ? `${days}d ${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m`
+    : `${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
+}
+
+function getSeasonSecondsRemaining(
+  confirmedTimestamp: string | undefined,
+  seasonEndsAt: string | undefined,
+  elapsedSeconds: number,
+): number | undefined {
+  if (!confirmedTimestamp || !seasonEndsAt || !/^\d+$/.test(confirmedTimestamp) || !/^\d+$/.test(seasonEndsAt)) {
+    return undefined;
+  }
+  return Math.max(0, Number(BigInt(seasonEndsAt) - BigInt(confirmedTimestamp)) - elapsedSeconds);
 }
 
 function randomBetween([min, max]: [number, number]): number {
@@ -867,6 +917,8 @@ export function LivingIslandScreen({
   const [leaderboard, setLeaderboard] = useState<V3SeasonalLeaderboardResponse | null>(null);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
+  const [leaderboardReceivedAt, setLeaderboardReceivedAt] = useState(0);
+  const [leaderboardClock, setLeaderboardClock] = useState(0);
   const [noticePresentation, setNoticePresentation] = useState<{
     text: string;
     important: boolean;
@@ -896,11 +948,20 @@ export function LivingIslandScreen({
     if (!leaderboardOpen && dialog.open) dialog.close();
   }, [leaderboardOpen]);
 
+  useEffect(() => {
+    if (!leaderboardOpen) return;
+    const timer = window.setInterval(() => setLeaderboardClock(window.performance.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [leaderboardOpen]);
+
   const refreshLeaderboard = async () => {
     setLeaderboardLoading(true);
     setLeaderboardError(null);
     try {
       setLeaderboard(await v3Api.seasonalLeaderboard());
+      const now = window.performance.now();
+      setLeaderboardReceivedAt(now);
+      setLeaderboardClock(now);
     } catch {
       setLeaderboardError('Leaderboard is temporarily unavailable. Please try again.');
     } finally {
@@ -956,6 +1017,13 @@ export function LivingIslandScreen({
     };
   }, [notice, noticeImportant]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  const leaderboardElapsedSeconds = Math.max(0, leaderboardClock - leaderboardReceivedAt) / 1_000;
+  const seasonSecondsRemaining = getSeasonSecondsRemaining(
+    leaderboard?.confirmedTimestamp,
+    leaderboard?.seasonEndsAt,
+    leaderboardElapsedSeconds,
+  );
 
   return (
     <div className="living-game">
@@ -1029,39 +1097,39 @@ export function LivingIslandScreen({
 
       <main className="living-main" id="living-home">
         <div className="living-desktop-layout">
-          <div className="living-island-column">
-            <section className="living-resource-bar" aria-label="Island resources">
-              <div className="living-resource living-resource--nature">
-                <span>{mode === 'verified' ? 'Live Nature · estimated' : 'Guest Nature'}</span>
-                <strong data-testid={mode === 'verified' ? 'verified-nature-counter' : 'nature-counter'}>
-                  {mode === 'verified'
-                    ? verifiedIsland
-                      ? `~${verifiedIsland.estimatedNature}`
-                      : '—'
-                    : formatValue(state.nature)}
-                </strong>
-                {mode === 'verified' && (verifiedIsland?.pendingHeartClicks ?? 0) > 0 && (
-                  <small aria-live="polite">{verifiedIsland?.pendingHeartClicks ?? 0} Heart clicks syncing</small>
-                )}
-              </div>
-              <div className="living-resource">
-                <span>{mode === 'verified' ? 'Earned this run' : 'Growing'}</span>
-                <strong>
-                  {mode === 'verified' ? verifiedIsland?.earnedNature ?? '—' : formatValue(state.runNature)}
-                  {mode === 'guest' && <small> this run</small>}
-                </strong>
-              </div>
-              <div className="living-resource">
-                <span>Production</span>
-                <strong>
-                  {mode === 'verified'
-                    ? verifiedIsland?.productionPerSecond ?? '—'
-                    : formatValue(productionPerSecond(state))}{' '}
-                  <small>/ sec</small>
-                </strong>
-              </div>
-            </section>
+          <section className="living-resource-bar" aria-label="Island resources">
+            <div className="living-resource living-resource--nature">
+              <span>{mode === 'verified' ? 'Live Nature · estimated' : 'Guest Nature'}</span>
+              <strong data-testid={mode === 'verified' ? 'verified-nature-counter' : 'nature-counter'}>
+                {mode === 'verified'
+                  ? verifiedIsland
+                    ? `~${verifiedIsland.estimatedNature}`
+                    : '—'
+                  : formatValue(state.nature)}
+              </strong>
+              {mode === 'verified' && (verifiedIsland?.pendingHeartClicks ?? 0) > 0 && (
+                <small aria-live="polite">{verifiedIsland?.pendingHeartClicks ?? 0} Heart clicks syncing</small>
+              )}
+            </div>
+            <div className="living-resource">
+              <span>{mode === 'verified' ? 'Earned this run' : 'Growing'}</span>
+              <strong>
+                {mode === 'verified' ? verifiedIsland?.earnedNature ?? '—' : formatValue(state.runNature)}
+                {mode === 'guest' && <small> this run</small>}
+              </strong>
+            </div>
+            <div className="living-resource">
+              <span>Production</span>
+              <strong>
+                {mode === 'verified'
+                  ? verifiedIsland?.productionPerSecond ?? '—'
+                  : formatValue(productionPerSecond(state))}{' '}
+                <small>/ sec</small>
+              </strong>
+            </div>
+          </section>
 
+          <div className="living-island-column">
             <LivingIsland
               state={state}
               mode={mode}
@@ -1331,8 +1399,13 @@ export function LivingIslandScreen({
       >
         <header>
           <div>
-            <span className="living-eyebrow">WORLDSEED GUIDE</span>
-            <h2 id="living-how-to-play-title">How to play</h2>
+            <div className="living-guide-title-row">
+              <span className="living-guide-emblem" aria-hidden="true">✿</span>
+              <div>
+                <span className="living-eyebrow">YOUR FIELD GUIDE</span>
+                <h2 id="living-how-to-play-title">How to play</h2>
+              </div>
+            </div>
           </div>
           <button
             type="button"
@@ -1345,8 +1418,8 @@ export function LivingIslandScreen({
         <div className="living-how-to-play-content">
           <p className="living-how-to-play-intro">
             {mode === 'verified'
-              ? 'Grow your Live island and settle progress through the verifier.'
-              : 'Grow your island, build production, and begin again stronger.'}
+              ? 'Restore your Live island, then settle progress securely through the verifier.'
+              : 'Restore your island, grow your Nature, and begin each new run stronger.'}
           </p>
           <ol>
             {mode === 'verified' ? (
@@ -1378,20 +1451,42 @@ export function LivingIslandScreen({
         onClose={() => setLeaderboardOpen(false)}
       >
         <header>
-          <div>
-            <span className="living-eyebrow">LIVE SEASON</span>
-            <h2 id="living-leaderboard-title">Leaderboard</h2>
+          <div className="living-leaderboard-title-row">
+            <span className="living-leaderboard-emblem" aria-hidden="true">✦</span>
+            <div>
+              <span className="living-eyebrow">LIVE SEASON</span>
+              <h2 id="living-leaderboard-title">Island keepers</h2>
+            </div>
           </div>
           <button type="button" aria-label="Close leaderboard" onClick={() => setLeaderboardOpen(false)}>
             ×
           </button>
         </header>
         <div className="living-how-to-play-content living-leaderboard-content">
-          <p className="living-how-to-play-intro">
-            Season {leaderboard?.seasonId ?? '—'} · confirmed Rebirth settlements only
-          </p>
+          <section className="living-season-summary" aria-label="Current global season">
+            <div className="living-season-index">
+              <span>SEASON</span>
+              <strong>{leaderboard?.seasonNumber ? BigInt(leaderboard.seasonNumber).toLocaleString() : '—'}</strong>
+            </div>
+            <div className="living-season-dates">
+              <span>This contract’s season</span>
+              <strong>{formatSeasonDateRange(leaderboard?.seasonEndsAt)}</strong>
+              <small>
+                Onchain week ID {leaderboard?.seasonId ? BigInt(leaderboard.seasonId).toLocaleString() : '—'} · global across contracts
+              </small>
+            </div>
+            <div className="living-season-countdown" aria-live="polite">
+              <span>Reset in</span>
+              <strong>{seasonSecondsRemaining === undefined ? '—' : formatSeasonCountdown(seasonSecondsRemaining)}</strong>
+            </div>
+          </section>
+          <p className="living-leaderboard-subtitle">Rankings use confirmed Rebirth settlements.</p>
           <section className="living-community-cp" aria-label="Community seasonal CP progress">
-            <div><strong>Community CP</strong><span>{leaderboard?.communityCP ? BigInt(leaderboard.communityCP).toLocaleString() : '0'} / {leaderboard?.communityCPCap ? BigInt(leaderboard.communityCPCap).toLocaleString() : '—'}</span></div>
+            <div className="living-community-cp-heading">
+              <span className="living-community-cp-icon" aria-hidden="true">✦</span>
+              <strong>Community points</strong>
+              <b>{formatCP(leaderboard?.communityCP)} <small>/ {formatCP(leaderboard?.communityCPCap)} CP cap</small></b>
+            </div>
             <div
               className="living-community-cp-track"
               role="progressbar"
@@ -1402,33 +1497,41 @@ export function LivingIslandScreen({
             >
               <i style={{ width: `${leaderboardCPPercent(leaderboard?.communityCP, leaderboard?.communityCPCap)}%` }} />
             </div>
-            <small>Season-wide verified CP earned toward the contract’s shared cap.</small>
+            <small>Verified CP earned by everyone this season.</small>
           </section>
           <p className="living-leaderboard-note">
-            Nature is counted when a run settles through Rebirth. Active-run Nature is not included yet.
+            Nature totals are added when a run settles. Unfinished runs are not counted yet.
           </p>
           {leaderboardLoading && <p role="status">Updating confirmed results…</p>}
           {leaderboardError && <p role="alert">{leaderboardError}</p>}
           {leaderboard?.indexing && (
             <p role="status">Indexing confirmed season history. Reopen or refresh to continue.</p>
           )}
-          <div className="living-leaderboard-table-wrap">
-            <table className="living-leaderboard-table">
-              <thead><tr><th>#</th><th>Player</th><th>Nature earned</th><th>CP</th></tr></thead>
-              <tbody>
-                {leaderboard?.entries.map((entry) => (
-                  <tr key={entry.wallet}>
-                    <td>{entry.rank}</td>
-                    <td><code>{`${entry.wallet.slice(0, 6)}…${entry.wallet.slice(-4)}`}</code></td>
-                    <td>{formatSeasonNature(entry.settledNatureAtoms)}</td>
-                    <td>{entry.cpEarned}</td>
-                  </tr>
-                ))}
-                {leaderboard && leaderboard.entries.length === 0 && !leaderboardLoading && (
-                  <tr><td colSpan={4}>No settled Rebirths in this season yet.</td></tr>
-                )}
-              </tbody>
-            </table>
+          <div className="living-leaderboard-list" aria-label="Season rankings">
+            {leaderboard?.entries.map((entry) => (
+              <article className="living-leaderboard-entry" key={entry.wallet}>
+                <div className="living-leaderboard-rank">{entry.rank}</div>
+                <div className="living-leaderboard-player">
+                  <span>Island keeper</span>
+                  <code>{`${entry.wallet.slice(0, 6)}…${entry.wallet.slice(-4)}`}</code>
+                </div>
+                <div className="living-leaderboard-stat">
+                  <span>Nature</span>
+                  <strong>{formatSeasonNature(entry.settledNatureAtoms)}</strong>
+                </div>
+                <div className="living-leaderboard-stat living-leaderboard-stat--cp">
+                  <span>Season CP</span>
+                  <strong>{entry.cpEarned}</strong>
+                </div>
+              </article>
+            ))}
+            {leaderboard && leaderboard.entries.length === 0 && !leaderboardLoading && (
+              <div className="living-leaderboard-empty">
+                <span aria-hidden="true">✿</span>
+                <strong>No settled runs yet</strong>
+                <small>Be the first to complete a Live Rebirth this season.</small>
+              </div>
+            )}
           </div>
           <button className="living-primary-button" type="button" onClick={() => void refreshLeaderboard()} disabled={leaderboardLoading}>
             {leaderboardLoading ? 'Updating…' : 'Refresh leaderboard'}

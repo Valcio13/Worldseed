@@ -20,12 +20,12 @@ describe('Living Island creature sprite frames', () => {
       />,
     );
 
-    const offsets = ['moss', 'pip', 'luma'].map((name) =>
+    const offsets = ['moss', 'pip', 'luma', 'caretaker', 'villager'].map((name) =>
       window
         .getComputedStyle(screen.getByTestId(`island-creature-${name}`))
         .getPropertyValue('--creature-sprite-x')
         .trim(),
     );
-    expect(offsets).toEqual(['-168px', '-224px', '-280px']);
+    expect(offsets).toEqual(['-168px', '-224px', '-280px', '0px', '-112px']);
   });
 });

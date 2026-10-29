@@ -30,6 +30,7 @@ import { VerifierError } from '../verifierProtocol';
 /** Proposed V3 ABI. Keep synchronized with the reviewed design and add Solidity tests before deployment. */
 export const V3_READ_ABI = parseAbi([
   'function currentSeasonId() view returns (uint64)',
+  'function seasonEnd(uint64 seasonId) view returns (uint64)',
   'function totalSeasonCP(uint64 seasonId) view returns (uint256)',
   'function MAX_SEASON_POINTS() view returns (uint256)',
   'function activeRunId(address player) view returns (uint64)',
@@ -205,13 +206,16 @@ export class V3ChainStateReader implements RunAuthorityReader {
 
   async getLeaderboardHead(): Promise<{
     seasonId: bigint;
+    deploymentSeasonId: bigint;
     confirmedBlock: bigint;
     confirmedBlockHash: Hex;
+    confirmedTimestamp: bigint;
+    seasonEndsAt: bigint;
     communityCP: bigint;
     communityCPCap: bigint;
   }> {
     const confirmedBlock = await this.confirmedBlockNumber();
-    const [seasonId, block, communityCPCap] = await Promise.all([
+    const [seasonId, block, deploymentBlock, communityCPCap] = await Promise.all([
       this.client.readContract({
         address: this.config.contractAddress,
         abi: V3_READ_ABI,
@@ -219,6 +223,7 @@ export class V3ChainStateReader implements RunAuthorityReader {
         blockNumber: confirmedBlock,
       }),
       this.client.getBlock({ blockNumber: confirmedBlock }),
+      this.client.getBlock({ blockNumber: this.config.deploymentBlock }),
       this.client.readContract({
         address: this.config.contractAddress,
         abi: V3_READ_ABI,
@@ -226,15 +231,36 @@ export class V3ChainStateReader implements RunAuthorityReader {
         blockNumber: confirmedBlock,
       }),
     ]);
-    if (!block.hash) throw new Error('Confirmed leaderboard block has no hash.');
-    const communityCP = await this.client.readContract({
-      address: this.config.contractAddress,
-      abi: V3_READ_ABI,
-      functionName: 'totalSeasonCP',
-      args: [seasonId],
-      blockNumber: confirmedBlock,
-    });
-    return { seasonId, confirmedBlock, confirmedBlockHash: block.hash, communityCP, communityCPCap };
+    if (!block.hash || !deploymentBlock.hash) throw new Error('Leaderboard reference block has no hash.');
+    const deploymentSeasonId = BigInt(
+      seasonIdAtMilliseconds(asSafeNumber(deploymentBlock.timestamp * 1_000n, 'Deployment time')),
+    );
+    const [communityCP, seasonEndsAt] = await Promise.all([
+      this.client.readContract({
+        address: this.config.contractAddress,
+        abi: V3_READ_ABI,
+        functionName: 'totalSeasonCP',
+        args: [seasonId],
+        blockNumber: confirmedBlock,
+      }),
+      this.client.readContract({
+        address: this.config.contractAddress,
+        abi: V3_READ_ABI,
+        functionName: 'seasonEnd',
+        args: [seasonId],
+        blockNumber: confirmedBlock,
+      }),
+    ]);
+    return {
+      seasonId,
+      deploymentSeasonId,
+      confirmedBlock,
+      confirmedBlockHash: block.hash,
+      confirmedTimestamp: block.timestamp,
+      seasonEndsAt,
+      communityCP,
+      communityCPCap,
+    };
   }
 
   async getLeaderboardBlockHash(blockNumber: bigint): Promise<Hex> {

@@ -21,7 +21,7 @@ import type {
 import { WorkersWalletSessions } from '../src/incremental/server/workersWalletSessions';
 import { createWorkerVerifierHandler } from '../src/incremental/worker/httpHandler';
 import workerEntrypoint from '../src/incremental/worker/index';
-import { SeasonalLeaderboard } from '../src/incremental/worker/leaderboard';
+import { getContractSeasonNumber, SeasonalLeaderboard } from '../src/incremental/worker/leaderboard';
 
 const TEST_KEY = `0x${'11'.repeat(32)}` as const;
 const TEST_CHAIN_ID = 31_337n;
@@ -762,6 +762,12 @@ describe('Workers D1 verifier persistence adapter', () => {
 });
 
 describe('seasonal leaderboard indexing', () => {
+  it('numbers seasons relative to contract deployment while preserving the global chain ID', () => {
+    assert.equal(getContractSeasonNumber(2_964n, 2_964n), 1n);
+    assert.equal(getContractSeasonNumber(2_965n, 2_964n), 2n);
+    assert.throws(() => getContractSeasonNumber(2_963n, 2_964n), /predates/);
+  });
+
   it('resumes bounded confirmed-event scans and aggregates settled Nature and CP once', async () => {
     const db = new SqliteD1TestDouble();
     const migration = readFileSync(new URL('../migrations/0004_seasonal_leaderboard.sql', import.meta.url), 'utf8');
@@ -779,8 +785,11 @@ describe('seasonal leaderboard indexing', () => {
     const chain = {
       getLeaderboardHead: async () => ({
         seasonId: 9n,
+        deploymentSeasonId: 9n,
         confirmedBlock: 3_150n,
         confirmedBlockHash: BLOCK_HASH as `0x${string}`,
+        confirmedTimestamp: 1_798_000_000n,
+        seasonEndsAt: 1_798_604_800n,
         communityCP: 120n,
         communityCPCap: 1_000_000n,
       }),
@@ -799,6 +808,9 @@ describe('seasonal leaderboard indexing', () => {
     const completed = await leaderboard.getCurrentSeason();
     assert.equal(completed.indexing, false);
     assert.equal(completed.seasonId, '9');
+    assert.equal(completed.seasonNumber, '1');
+    assert.equal(completed.confirmedTimestamp, '1798000000');
+    assert.equal(completed.seasonEndsAt, '1798604800');
     assert.equal(completed.communityCP, '120');
     assert.equal(completed.communityCPCap, '1000000');
     assert.deepEqual(completed.entries, [{
@@ -814,7 +826,7 @@ describe('seasonal leaderboard indexing', () => {
 
   it('serves the leaderboard as a public read-only CORS endpoint', async () => {
     const responseBody = {
-      seasonId: '9', communityCP: '120', communityCPCap: '1000000', entries: [], indexing: false, scannedThrough: 100, confirmedHead: '100',
+      seasonId: '9', seasonNumber: '1', confirmedTimestamp: '1798000000', seasonEndsAt: '1798604800', communityCP: '120', communityCPCap: '1000000', entries: [], indexing: false, scannedThrough: 100, confirmedHead: '100',
       scannedBlocks: '0', natureScale: '1000000000000',
     };
     const handler = createWorkerVerifierHandler({

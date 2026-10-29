@@ -121,7 +121,7 @@ describe('Living Island screen', () => {
     expect(container.querySelector('.living-brand-seed')).not.toBeInTheDocument();
   });
 
-  it('keeps one island and one ordered control panel across desktop and mobile layouts', () => {
+  it('places the resource bar above the aligned island and control columns', () => {
     const { container } = renderScreen(createEconomyState(1));
     const layout = container.querySelector<HTMLElement>('.living-desktop-layout');
     const islandColumn = container.querySelector<HTMLElement>('.living-island-column');
@@ -129,7 +129,8 @@ describe('Living Island screen', () => {
 
     expect(layout).toContainElement(islandColumn);
     expect(layout).toContainElement(controlPanel);
-    expect(islandColumn).toContainElement(screen.getByRole('region', { name: 'Island resources' }));
+    expect(layout?.firstElementChild).toBe(screen.getByRole('region', { name: 'Island resources' }));
+    expect(islandColumn).not.toContainElement(screen.getByRole('region', { name: 'Island resources' }));
     expect(islandColumn).toContainElement(screen.getByRole('region', { name: /Living Island/ }));
     expect(controlPanel).toContainElement(container.querySelector('.living-rebirth-card'));
     expect(controlPanel).toContainElement(container.querySelector('.living-shop'));
@@ -527,6 +528,8 @@ describe('Living Island screen', () => {
     expect(screen.getByTestId('island-creature-moss')).toHaveStyle({ left: '2%', top: '58%' });
     expect(screen.getByTestId('island-creature-pip')).toHaveStyle({ left: '84%', top: '25%' });
     expect(screen.getByTestId('island-creature-luma')).toHaveStyle({ left: '78%', top: '45%' });
+    expect(screen.getByTestId('island-creature-caretaker')).toHaveStyle({ left: '12%', top: '72%' });
+    expect(screen.getByTestId('island-creature-villager')).toHaveStyle({ left: '85%', top: '63%' });
   });
 
   it('passes habitat purchases through the existing economy action', () => {
@@ -743,7 +746,7 @@ describe('Living Island screen', () => {
         name: 'growing',
         trees: 3,
         flowers: 4,
-        creatures: ['moss', 'pip'],
+        creatures: ['moss', 'pip', 'caretaker'],
         campsite: false,
         edgeDetails: 5,
         earthEdgeDetails: 1,
@@ -764,7 +767,7 @@ describe('Living Island screen', () => {
         name: 'flourishing',
         trees: 4,
         flowers: 7,
-        creatures: ['moss', 'pip', 'luma'],
+        creatures: ['moss', 'pip', 'luma', 'caretaker', 'villager'],
         campsite: true,
         edgeDetails: 8,
         earthEdgeDetails: 2,

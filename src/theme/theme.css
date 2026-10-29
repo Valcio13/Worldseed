@@ -193,7 +193,8 @@ body {
   --living-muted: #b4c3b5;
   --living-disabled: #a2b1a4;
   --living-line: #496653;
-  background: var(--living-ivory);
+  background-color: var(--living-ivory);
+  background-image: url('/assets/environment/worldseed-page-dark.svg');
 }
 
 :root[data-theme='dark'] .living-scene {
@@ -512,50 +513,88 @@ body {
   background: #2d4a39;
 }
 
-/* The Start Run dialog keeps a parchment surface in either theme, so dark-mode
-   V3 panel colors must not leak into its light controls. */
+/* Match the Start Run dialog to the selected game theme. */
+:root[data-theme='dark'] .v3-start-run-dialog {
+  border-color: #a88a4e;
+  color: #f1f1e6;
+  background: #203b2e;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog > header {
+  border-color: #496653;
+  background: #1d3a2d;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog > header span {
+  color: #b4c3b5;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog > header h2 {
+  color: #f1f1e6;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog .v3-start-run-close {
+  border-color: #54725b;
+  color: #f1f1e6;
+  background: #2d4a39;
+}
+
 :root[data-theme='dark'] .v3-start-run-dialog .v3-run-controls {
-  color: #294d3d;
+  color: #f1f1e6;
   background: transparent;
 }
 
 :root[data-theme='dark'] .v3-start-run-dialog .v3-panel-heading strong {
-  color: #1d3734;
+  color: #f1f1e6;
 }
 
 :root[data-theme='dark'] .v3-start-run-dialog .v3-panel-kicker {
-  color: #6e8179;
+  color: #b4c3b5;
 }
 
 :root[data-theme='dark'] .v3-start-run-dialog .v3-start-info {
-  background: rgba(100, 154, 110, 0.1);
+  background: #2d4a39;
 }
 
 :root[data-theme='dark'] .v3-start-run-dialog .v3-start-info p {
-  color: #365b43;
+  color: #dce8d8;
 }
 
 :root[data-theme='dark'] .v3-start-run-dialog .v3-start-upgrades h4 {
-  color: #203936;
+  color: #f1f1e6;
 }
 
 :root[data-theme='dark'] .v3-start-run-dialog .v3-start-upgrades > p:not(.v3-upgrades-hint),
 :root[data-theme='dark'] .v3-start-run-dialog .v3-start-upgrade-name {
-  color: #294d3d;
+  color: #f1f1e6;
 }
 
 :root[data-theme='dark'] .v3-start-run-dialog .v3-upgrades-hint,
 :root[data-theme='dark'] .v3-start-run-dialog .v3-start-upgrade-name small,
 :root[data-theme='dark'] .v3-start-run-dialog .v3-start-note {
-  color: #63756a;
+  color: #b4c3b5;
 }
 
 :root[data-theme='dark'] .v3-start-run-dialog .v3-start-upgrade-row {
-  background: #edf1e6;
+  background: #2d4a39;
 }
 
 :root[data-theme='dark'] .v3-start-run-dialog .v3-upgrade-level-display {
-  color: #203936;
+  color: #f1f1e6;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog .v3-upgrade-adjust {
+  border-color: #6b8f6a;
+  color: #dce8d8;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog .v3-upgrade-adjust:disabled {
+  color: #a4b1a3;
+  background: #35483a;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog .v3-start-note {
+  color: #b4c3b5;
 }
 
 :root[data-theme='dark'] .v3-controls-notice strong,

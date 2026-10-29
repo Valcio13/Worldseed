@@ -126,8 +126,6 @@ type IslandCreatureKind = 'moss' | 'pip' | 'luma' | 'caretaker' | 'villager';
 type CreaturePosition = { left: number; top: number };
 type CreatureWanderArea = {
   start: CreaturePosition;
-  left: [number, number];
-  top: [number, number];
   walkMs: number;
 };
 
@@ -136,24 +134,24 @@ const CREATURE_WANDER_AREAS: Record<
   { desktop: CreatureWanderArea; mobile: CreatureWanderArea }
 > = {
   moss: {
-    desktop: { start: { left: 23, top: 60 }, left: [20, 27], top: [58, 63], walkMs: 1250 },
-    mobile: { start: { left: 2, top: 58 }, left: [0, 5], top: [57, 60], walkMs: 1050 },
+    desktop: { start: { left: 23, top: 60 }, walkMs: 1250 },
+    mobile: { start: { left: 22, top: 58 }, walkMs: 1050 },
   },
   pip: {
-    desktop: { start: { left: 76, top: 39 }, left: [72, 80], top: [35, 45], walkMs: 1450 },
-    mobile: { start: { left: 84, top: 25 }, left: [82, 86], top: [21, 28], walkMs: 1200 },
+    desktop: { start: { left: 76, top: 39 }, walkMs: 1450 },
+    mobile: { start: { left: 72, top: 35 }, walkMs: 1200 },
   },
   luma: {
-    desktop: { start: { left: 69, top: 55 }, left: [67, 75], top: [52, 61], walkMs: 1650 },
-    mobile: { start: { left: 78, top: 45 }, left: [76, 80], top: [43, 50], walkMs: 1450 },
+    desktop: { start: { left: 69, top: 55 }, walkMs: 1650 },
+    mobile: { start: { left: 70, top: 52 }, walkMs: 1450 },
   },
   caretaker: {
-    desktop: { start: { left: 36, top: 73 }, left: [33, 40], top: [69, 76], walkMs: 1550 },
-    mobile: { start: { left: 12, top: 72 }, left: [10, 16], top: [69, 75], walkMs: 1350 },
+    desktop: { start: { left: 36, top: 65 }, walkMs: 1550 },
+    mobile: { start: { left: 33, top: 64 }, walkMs: 1350 },
   },
   villager: {
-    desktop: { start: { left: 81, top: 63 }, left: [78, 84], top: [59, 66], walkMs: 1750 },
-    mobile: { start: { left: 85, top: 63 }, left: [82, 88], top: [60, 66], walkMs: 1500 },
+    desktop: { start: { left: 74, top: 52 }, walkMs: 1750 },
+    mobile: { start: { left: 74, top: 52 }, walkMs: 1500 },
   },
 };
 
@@ -228,8 +226,68 @@ function getSeasonSecondsRemaining(
   return Math.max(0, Number(BigInt(seasonEndsAt) - BigInt(confirmedTimestamp)) - elapsedSeconds);
 }
 
-function randomBetween([min, max]: [number, number]): number {
-  return min + Math.random() * (max - min);
+function creatureFitsIslandSurface(position: CreaturePosition, compact: boolean): boolean {
+  const halfWidth = compact ? 6 : 5;
+  const halfHeight = compact ? 10 : 13;
+  const left = [position.left + 1, position.left + halfWidth * 2 - 1];
+  const top = [position.top + 1, position.top + halfHeight * 2 - 1];
+
+  return left.every((x) => top.every((y) => {
+    const normalizedX = (x - 50) / 46;
+    const normalizedY = (y - 50) / 47;
+    return normalizedX * normalizedX + normalizedY * normalizedY <= 0.92;
+  }));
+}
+
+function creatureAvoidsHeart(position: CreaturePosition, compact: boolean): boolean {
+  const centerX = position.left + (compact ? 6 : 5);
+  const centerY = position.top + (compact ? 10 : 13);
+  const normalizedX = (centerX - 50) / 13;
+  const normalizedY = (centerY - 55) / 21;
+  return normalizedX * normalizedX + normalizedY * normalizedY > 1.04;
+}
+
+function creaturePathAvoidsHeart(
+  from: CreaturePosition,
+  to: CreaturePosition,
+  compact: boolean,
+): boolean {
+  const distance = Math.hypot(to.left - from.left, to.top - from.top);
+  const samples = Math.max(2, Math.ceil(distance / 2));
+
+  for (let index = 1; index < samples; index += 1) {
+    const progress = index / samples;
+    const point = {
+      left: from.left + (to.left - from.left) * progress,
+      top: from.top + (to.top - from.top) * progress,
+    };
+    if (!creatureAvoidsHeart(point, compact)) return false;
+  }
+
+  return true;
+}
+
+function randomIslandPosition(compact: boolean, fallback: CreaturePosition): CreaturePosition {
+  const halfWidth = compact ? 6 : 5;
+  const halfHeight = compact ? 10 : 13;
+
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.sqrt(Math.random()) * 0.72;
+    const candidate = {
+      left: 50 + Math.cos(angle) * 40 * radius - halfWidth,
+      top: 50 + Math.sin(angle) * 40 * radius - halfHeight,
+    };
+    if (
+      creatureFitsIslandSurface(candidate, compact) &&
+      creatureAvoidsHeart(candidate, compact) &&
+      creaturePathAvoidsHeart(fallback, candidate, compact)
+    ) {
+      return candidate;
+    }
+  }
+
+  return fallback;
 }
 
 function IslandCreature({ creature }: { creature: IslandCreatureKind }) {
@@ -239,6 +297,8 @@ function IslandCreature({ creature }: { creature: IslandCreatureKind }) {
   const area = CREATURE_WANDER_AREAS[creature][compact ? 'mobile' : 'desktop'];
   const [position, setPosition] = useState(area.start);
   const positionRef = useRef(area.start);
+  const elementRef = useRef<HTMLSpanElement | null>(null);
+  const animationRef = useRef<Animation | null>(null);
   const compactRef = useRef(compact);
   const [walking, setWalking] = useState(false);
   const [facingLeft, setFacingLeft] = useState(false);
@@ -278,11 +338,33 @@ function IslandCreature({ creature }: { creature: IslandCreatureKind }) {
     const scheduleWander = () => {
       timer = window.setTimeout(() => {
         if (cancelled) return;
-        const next = { left: randomBetween(area.left), top: randomBetween(area.top) };
-        setFacingLeft(next.left < positionRef.current.left);
+        const next = randomIslandPosition(compact, positionRef.current);
+        if (next.left === positionRef.current.left && next.top === positionRef.current.top) {
+          setWalking(false);
+          scheduleWander();
+          return;
+        }
+        const from = positionRef.current;
+        setFacingLeft(next.left < from.left);
         positionRef.current = next;
         setPosition(next);
         setWalking(true);
+        const element = elementRef.current;
+        if (element && typeof element.animate === 'function') {
+          animationRef.current?.cancel();
+          const animation = element.animate(
+            [
+              { left: `${from.left}%`, top: `${from.top}%` },
+              { left: `${next.left}%`, top: `${next.top}%` },
+            ],
+            { duration: area.walkMs, easing: 'ease-in-out', fill: 'both' },
+          );
+          animationRef.current = animation;
+          animation.onfinish = () => {
+            animation.cancel();
+            if (animationRef.current === animation) animationRef.current = null;
+          };
+        }
         timer = window.setTimeout(() => {
           if (cancelled) return;
           setWalking(false);
@@ -295,6 +377,8 @@ function IslandCreature({ creature }: { creature: IslandCreatureKind }) {
     return () => {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
+      animationRef.current?.cancel();
+      animationRef.current = null;
     };
   }, [area, reduceMotion]);
 
@@ -305,6 +389,7 @@ function IslandCreature({ creature }: { creature: IslandCreatureKind }) {
       data-walking={walking}
       data-facing={facingLeft ? 'left' : 'right'}
       data-testid={`island-creature-${creature}`}
+      ref={elementRef}
       style={{ left: `${position.left}%`, top: `${position.top}%` }}
     >
       <i className="island-creature-sprite" />

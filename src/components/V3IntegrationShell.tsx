@@ -144,6 +144,7 @@ function VerifiedProgression({
   }, [startRunOpen]);
   const canAuthenticate = Boolean(auth.canAuthenticate && authenticationRunId !== undefined);
   const walletReconnecting = walletAccount.status === 'reconnecting';
+  const walletReady = walletAccount.status === 'connected';
   const walletBusy = connecting || switching || walletReconnecting;
   const flowBusy = [
     'fetching-next-run-id',
@@ -165,7 +166,7 @@ function VerifiedProgression({
           : 'idle';
 
   async function authenticateWallet() {
-    if (!canAuthenticate || authenticationRunId === undefined) return;
+    if (!walletReady || !canAuthenticate || authenticationRunId === undefined) return;
     await auth.authenticate(authenticationRunId);
   }
 
@@ -189,6 +190,7 @@ function VerifiedProgression({
   }
 
   async function startVerifiedRun(upgrades: Array<{ upgradeId: number; quantity: number }>) {
+    if (!walletReady) throw new Error('Wait for your wallet to finish reconnecting, then try again.');
     const upgradeNames: V3UpgradeKind[] = ['growth', 'efficiency', 'awakening', 'rebirth'];
     const choices = upgrades.map(({ upgradeId, quantity }) => {
       const upgradeIdName = upgradeNames[upgradeId];
@@ -202,21 +204,23 @@ function VerifiedProgression({
   const openStartRun = useCallback(() => setStartRunOpen(true), []);
 
   const canSettleRun = Boolean(
-    hasActiveRun && auth.isAuthenticated && settlement.canSettle && !runState.loading,
+    hasActiveRun && walletReady && auth.isAuthenticated && settlement.canSettle && !runState.loading,
   );
 
   const recordRunPoints = useCallback(async () => {
     try {
+      if (!walletReady) throw new Error('Wait for your wallet to finish reconnecting, then try again.');
       await flushPendingCommandsRef.current?.();
       await settlementRef.current.recordPoints();
       await runStateRef.current.refetch();
     } catch (error) {
       setWalletError(error instanceof Error ? error.message : 'Live actions must sync before recording points.');
     }
-  }, []);
+  }, [walletReady]);
 
   const rebirthRun = useCallback(async () => {
     try {
+      if (!walletReady) throw new Error('Wait for your wallet to finish reconnecting, then try again.');
       await flushPendingCommandsRef.current?.();
       await settlementRef.current.rebirth();
       playIslandSound('rebirth');
@@ -230,7 +234,7 @@ function VerifiedProgression({
     } catch (error) {
       setWalletError(error instanceof Error ? error.message : 'Live actions must sync before Rebirth.');
     }
-  }, []);
+  }, [walletReady]);
 
   const playerProfile = useMemo<V3LivingProfile>(() => ({
     activeRun: hasActiveRun,
@@ -397,7 +401,7 @@ function VerifiedProgression({
                 <button
                   type="button"
                   onClick={() => void authenticateWallet()}
-                  disabled={!canAuthenticate || isAuthenticating}
+                  disabled={!walletReady || !canAuthenticate || isAuthenticating}
                 >
                   {isAuthenticating
                     ? 'Authenticating…'
@@ -411,8 +415,9 @@ function VerifiedProgression({
                   type="button"
                   className="v3-start-run-trigger"
                   onClick={() => setStartRunOpen(true)}
+                  disabled={!walletReady}
                 >
-                  Start a Live run
+                  {walletReconnecting ? 'Restoring wallet…' : 'Start a Live run'}
                 </button>
               )}
             </>

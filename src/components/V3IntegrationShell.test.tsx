@@ -160,6 +160,10 @@ describe('Living Island verified controls', () => {
       runId: 7n,
       run: { status: 'ACTIVE' },
     }));
+    useAccountMock.mockReturnValue({
+      status: 'connected',
+      address: '0x0000000000000000000000000000000000000001',
+    });
     const authenticate = vi.fn();
     useV3AuthMock.mockReturnValue(authState({
       error: 'Session expired',
@@ -211,8 +215,37 @@ describe('Living Island verified controls', () => {
     expect(onSwitchToGuest).toHaveBeenCalledOnce();
   });
 
+  it('keeps verified transactions unavailable while the wallet connector is restoring', () => {
+    const address = '0x0000000000000000000000000000000000000001';
+    useAccountMock.mockReturnValue({ status: 'reconnecting', address });
+    useV3RunMock.mockReturnValue(runState({
+      wallet: address,
+      runId: 7n,
+      run: { status: 'ACTIVE' },
+      canAccessV3: true,
+    }));
+    useV3AuthMock.mockReturnValue(authState({
+      wallet: address,
+      isAuthenticated: true,
+      sessionToken: 'retained-session',
+    }));
+    useV3SettlementMock.mockReturnValue({
+      status: 'idle', action: null, transactionHash: null, error: null,
+      canSettle: true, recordPoints: vi.fn(), rebirth: vi.fn(),
+    });
+    const onSettlementControlsReady = vi.fn();
+
+    render(<V3IslandProgression
+      {...callbacks()}
+      onSettlementControlsReady={onSettlementControlsReady}
+    />);
+
+    expect(onSettlementControlsReady.mock.calls.at(-1)?.[0].canSettle).toBe(false);
+  });
+
   it('opens Start Run in a dedicated scrollable dialog instead of the account dropdown', () => {
     const address = '0x0000000000000000000000000000000000000001';
+    useAccountMock.mockReturnValue({ status: 'connected', address });
     useV3RunMock.mockReturnValue(runState({
       wallet: address,
       isCorrectChain: true,

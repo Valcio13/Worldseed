@@ -470,9 +470,18 @@ describe('Living Island screen', () => {
     ]);
   });
 
-  it('wanders creatures through short walks, uses walking state, and returns to idle', () => {
+  it('reroutes a walk that would pass behind the Heart, then returns to idle', () => {
     vi.useFakeTimers();
-    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0.99)
+      .mockReturnValueOnce(0.99)
+      .mockReturnValueOnce(1.3 / (2 * Math.PI))
+      .mockReturnValueOnce(1);
     const base = createEconomyState(1);
     const flourishing: EconomyState = {
       ...base,
@@ -481,12 +490,20 @@ describe('Living Island screen', () => {
     renderScreen(flourishing);
 
     const moss = screen.getByTestId('island-creature-moss');
+    const animate = vi.fn(
+      (_keyframes: Parameters<Element['animate']>[0], _options?: Parameters<Element['animate']>[1]) =>
+        ({ cancel: vi.fn(), onfinish: null }) as unknown as Animation,
+    );
+    Object.defineProperty(moss, 'animate', { configurable: true, value: animate });
     expect(moss).toHaveAttribute('data-walking', 'false');
     expect(moss).toHaveStyle({ left: '23%', top: '60%' });
-    act(() => vi.advanceTimersByTime(4_600));
+    act(() => vi.advanceTimersByTime(2_200));
     expect(moss).toHaveAttribute('data-walking', 'true');
-    expect(Number.parseFloat(moss.style.left)).toBeGreaterThan(26);
-    expect(Number.parseFloat(moss.style.top)).toBeGreaterThan(62);
+    expect(Number.parseFloat(moss.style.left)).toBeGreaterThan(50);
+    expect(Number.parseFloat(moss.style.left)).toBeLessThan(60);
+    expect(Number.parseFloat(moss.style.top)).toBeGreaterThan(60);
+    expect(animate).toHaveBeenCalledOnce();
+    expect(animate.mock.calls[0]?.[1]).toMatchObject({ duration: 1250, easing: 'ease-in-out' });
     expect(moss).toHaveAttribute('data-facing', 'right');
     expect(moss.querySelector('.island-creature-sprite')).toBeInTheDocument();
 
@@ -513,7 +530,36 @@ describe('Living Island screen', () => {
     expect(moss).toHaveStyle({ left: '23%', top: '60%' });
   });
 
-  it('places creatures in mobile lanes outside the Heart interaction', () => {
+  it('lets creatures wander broadly while keeping their sprite footprint inside the island', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((_query: string) => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const base = createEconomyState(1);
+    renderScreen({ ...base, habitats: { ...base.habitats, water: 15 } });
+    const moss = screen.getByTestId('island-creature-moss');
+
+    act(() => vi.advanceTimersByTime(4_000));
+
+    const left = Number.parseFloat(moss.style.left);
+    const top = Number.parseFloat(moss.style.top);
+    expect(left).not.toBe(23);
+    for (const x of [left + 1, left + 9]) {
+      for (const y of [top + 1, top + 25]) {
+        const normalizedX = (x - 50) / 46;
+        const normalizedY = (y - 50) / 47;
+        expect(normalizedX ** 2 + normalizedY ** 2).toBeLessThanOrEqual(0.92);
+      }
+    }
+  });
+
+  it('places mobile creatures on the island surface before they begin wandering', () => {
     vi.stubGlobal(
       'matchMedia',
       vi.fn((query: string) => ({
@@ -525,11 +571,11 @@ describe('Living Island screen', () => {
     const base = createEconomyState(1);
     renderScreen({ ...base, habitats: { ...base.habitats, water: 15 } });
 
-    expect(screen.getByTestId('island-creature-moss')).toHaveStyle({ left: '2%', top: '58%' });
-    expect(screen.getByTestId('island-creature-pip')).toHaveStyle({ left: '84%', top: '25%' });
-    expect(screen.getByTestId('island-creature-luma')).toHaveStyle({ left: '78%', top: '45%' });
-    expect(screen.getByTestId('island-creature-caretaker')).toHaveStyle({ left: '12%', top: '72%' });
-    expect(screen.getByTestId('island-creature-villager')).toHaveStyle({ left: '85%', top: '63%' });
+    expect(screen.getByTestId('island-creature-moss')).toHaveStyle({ left: '22%', top: '58%' });
+    expect(screen.getByTestId('island-creature-pip')).toHaveStyle({ left: '72%', top: '35%' });
+    expect(screen.getByTestId('island-creature-luma')).toHaveStyle({ left: '70%', top: '52%' });
+    expect(screen.getByTestId('island-creature-caretaker')).toHaveStyle({ left: '33%', top: '64%' });
+    expect(screen.getByTestId('island-creature-villager')).toHaveStyle({ left: '74%', top: '52%' });
   });
 
   it('passes habitat purchases through the existing economy action', () => {

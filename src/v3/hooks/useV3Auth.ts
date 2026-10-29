@@ -220,8 +220,8 @@ export function useV3Auth() {
     const chainChanged = chainId !== TARGET_CHAIN_ID;
     const detachedSession = !account.address ? inMemorySession ?? readStoredSession() : null;
 
-    // A provider disconnect is recoverable: keep the run-bound bearer session
-    // alive until it expires so reconnecting the same wallet can resume it.
+    // A provider disconnect is recoverable: keep the wallet-scoped bearer
+    // session alive until it expires so reconnecting the same wallet can resume it.
     // Explicit in-app disconnect calls logout first and clears this session.
     if (
       !account.address &&

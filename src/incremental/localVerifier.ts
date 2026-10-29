@@ -319,8 +319,9 @@ export class LocalVerifier {
     if (!session)
       throw new VerifierError('UNAUTHENTICATED', 'Wallet session is invalid or expired.');
     if (!runId) throw new VerifierError('INVALID_REQUEST', 'Run ID is required.');
-    if (session.runId !== runId)
-      throw new VerifierError('WRONG_WALLET', 'Wallet session is scoped to a different run.');
+    // Sessions authenticate a wallet for this chain, contract, and origin.
+    // Run ownership and status are checked independently against chain state,
+    // allowing the same wallet session to continue after Rebirth.
     const authority = await this.authority.getRunContext(session, runId);
     if (!authority)
       throw new VerifierError('RUN_NOT_FOUND', 'No run exists for this authenticated wallet.');

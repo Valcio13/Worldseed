@@ -25,7 +25,7 @@ The `Origin` header must exactly match a configured `V3_ALLOWED_ORIGINS` entry. 
 
 The wallet signs `message` with `personal_sign`/`signMessage`; this signature is for login only and is not a transaction authorization.
 
-Before the first run, the frontend reads the connected chain ID, the configured V3 contract, and `nextRunId(wallet) + 1` from the active chain, then uses that next run ID in the challenge. After a rebirth or abandoned run, create a fresh challenge/session for the next run ID; sessions remain bound to one run.
+Before authentication, the frontend reads the connected chain ID, configured V3 contract, and current run context. The challenge includes the run ID as signed context, but the resulting session remains scoped to the wallet, chain, contract, and origin and can continue across that wallet's runs. Each requested run is independently checked against confirmed chain ownership, status, and rules by the verifier.
 
 ### `POST /api/v3/auth/complete`
 
@@ -33,13 +33,13 @@ Before the first run, the frontend reads the connected chain ID, the configured 
 { "challengeId": "<uuid>", "signature": "0x..." }
 ```
 
-Success returns `{ "sessionToken": "<opaque bearer token>", "expiresAtMs": 0 }`. The token is valid for four hours, is returned once, and only its SHA-256 digest is persisted. The challenge is single-use and expires after five minutes. Include `Authorization: Bearer <sessionToken>` on all following requests. Sessions are bound to wallet, chain, contract, run, and origin.
+Success returns `{ "sessionToken": "<opaque bearer token>", "expiresAtMs": 0 }`. The token is valid for four hours, is returned once, and only its SHA-256 digest is persisted. The challenge is single-use and expires after five minutes. Include `Authorization: Bearer <sessionToken>` on all following requests. Sessions are bound to wallet, chain, contract, and origin, and may be reused for subsequent runs owned by that wallet.
 
 ## Start Run
 
 ### `POST /api/v3/runs/start-attestation`
 
-Requires a session bound to the next on-chain run ID. Body:
+Requires an authenticated wallet session. The verifier derives the next run ID and upgrade eligibility from confirmed chain state. Body:
 
 ```json
 {

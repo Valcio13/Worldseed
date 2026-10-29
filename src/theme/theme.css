@@ -1,7 +1,48 @@
+:root {
+  --worldseed-scroll-track: #e6e9dd;
+  --worldseed-scroll-thumb: #aab99c;
+  --worldseed-scroll-thumb-hover: #7f9a73;
+  --worldseed-bg-glow: rgba(239, 246, 220, 0.92);
+  --worldseed-bg-top: #d9ead5;
+  --worldseed-bg-middle: #edf1d9;
+  --worldseed-bg-bottom: #c9dfc8;
+}
+
+@property --worldseed-bg-glow {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(239, 246, 220, 0.92);
+}
+
+@property --worldseed-bg-top {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #d9ead5;
+}
+
+@property --worldseed-bg-middle {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #edf1d9;
+}
+
+@property --worldseed-bg-bottom {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #c9dfc8;
+}
+
 :root[data-theme='dark'] {
   color-scheme: dark;
   color: #f1f1e6;
   background: #183529;
+  --worldseed-bg-glow: #294837;
+  --worldseed-bg-top: #1d3a2d;
+  --worldseed-bg-middle: #1d3a2d;
+  --worldseed-bg-bottom: #173327;
+  --worldseed-scroll-track: #203b2e;
+  --worldseed-scroll-thumb: #66836a;
+  --worldseed-scroll-thumb-hover: #8eaa80;
   --ink: #f1f1e6;
   --muted: #b4c3b5;
   --deep: #dfe8d7;
@@ -10,26 +51,65 @@
   --line: #496653;
 }
 
-/* Keep theme changes soft and controls responsive without delaying actions. */
+:root,
+.living-game,
+.living-game * {
+  scrollbar-color: var(--worldseed-scroll-thumb) var(--worldseed-scroll-track);
+  scrollbar-width: thin;
+}
+
+:root::-webkit-scrollbar,
+.living-game *::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+:root::-webkit-scrollbar-track,
+.living-game *::-webkit-scrollbar-track {
+  background: var(--worldseed-scroll-track);
+}
+
+:root::-webkit-scrollbar-thumb,
+.living-game *::-webkit-scrollbar-thumb {
+  border: 3px solid var(--worldseed-scroll-track);
+  border-radius: 10px;
+  background: var(--worldseed-scroll-thumb);
+  background-clip: padding-box;
+}
+
+:root::-webkit-scrollbar-thumb:hover,
+.living-game *::-webkit-scrollbar-thumb:hover {
+  background: var(--worldseed-scroll-thumb-hover);
+}
+
+/* Ease palette changes without slowing layout or gameplay interactions. */
 :root,
 body,
 .living-game,
-.living-game :is(button, input, select, textarea, summary, article, section, [class*='panel'], [class*='card']),
+.living-game *,
+.living-game *::before,
+.living-game *::after,
 .audio-settings-panel,
 .audio-settings summary {
   transition:
-    color 200ms ease,
-    background-color 200ms ease,
-    border-color 200ms ease,
-    box-shadow 200ms ease;
+    --worldseed-bg-glow 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    --worldseed-bg-top 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    --worldseed-bg-middle 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    --worldseed-bg-bottom 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    fill 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    stroke 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .living-game button:not(:disabled) {
   transition:
-    color 200ms ease,
-    background-color 200ms ease,
-    border-color 200ms ease,
-    box-shadow 200ms ease,
+    color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 320ms cubic-bezier(0.22, 1, 0.36, 1),
     filter 160ms ease,
     transform 180ms cubic-bezier(0.2, 1.6, 0.4, 1);
 }
@@ -84,7 +164,17 @@ details[open]::details-content {
 
 :root[data-theme='dark'] body {
   color: #f1f1e6;
-  background: radial-gradient(ellipse at 85% 12%, #294837 0, #1d3a2d 48%, #173327 100%);
+}
+
+body {
+  background:
+    radial-gradient(ellipse at 85% 12%, var(--worldseed-bg-glow) 0, transparent 54%),
+    linear-gradient(
+      180deg,
+      var(--worldseed-bg-top) 0%,
+      var(--worldseed-bg-middle) 54%,
+      var(--worldseed-bg-bottom) 100%
+    );
 }
 
 :root[data-theme='dark'] .living-game {

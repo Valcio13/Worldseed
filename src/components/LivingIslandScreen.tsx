@@ -262,6 +262,48 @@ export interface LivingIslandScreenProps {
 
 export type LivingIslandMode = 'guest' | 'verified';
 
+function formatLiveNature(atoms: string): string {
+  try {
+    const value = BigInt(atoms);
+    const scale = 1_000_000_000_000n;
+    const whole = value / scale;
+    const fraction = (value % scale).toString().padStart(12, '0').replace(/0+$/, '');
+    return `${new Intl.NumberFormat().format(whole)}${fraction ? `.${fraction}` : ''}`;
+  } catch {
+    return '—';
+  }
+}
+
+function VerifiedStatsPanel({ profile }: { profile: V3LivingProfile }) {
+  const formatInteger = (value: string) => {
+    try {
+      return new Intl.NumberFormat().format(BigInt(value));
+    } catch {
+      return '—';
+    }
+  };
+  return (
+    <section className="v3-status-panel living-live-stats" aria-label="Live account stats">
+      <div className="v3-panel-heading">
+        <span className="v3-panel-kicker">LIVE ACCOUNT</span>
+        <strong>{profile.activeRun ? `Run #${profile.runId}` : 'No Active Run'}</strong>
+      </div>
+      <p className="v3-status-description">
+        {profile.activeRun ? 'Verified progression for your current run' : 'Start a Live run to begin earning verified points'}
+      </p>
+      <dl className="v3-status-details" aria-label="Live lifetime and season totals">
+        <div className="v3-status-item"><dt>Lifetime Nature</dt><dd>{formatLiveNature(profile.lifetimeNature)}</dd></div>
+        <div className="v3-status-item"><dt>Accumulated Rebirth score</dt><dd>{formatInteger(profile.accumulatedScore)}</dd></div>
+        <div className="v3-status-item"><dt>Season PP</dt><dd>{formatInteger(profile.seasonalPP)}</dd></div>
+        <div className="v3-status-item"><dt>Season CP</dt><dd>{formatInteger(profile.seasonalCP)}</dd></div>
+        <div className="v3-status-item"><dt>Lifetime CP</dt><dd>{formatInteger(profile.lifetimeCP)}</dd></div>
+        <div className="v3-status-item"><dt>Highest settled tier</dt><dd>{profile.seasonalHighScoreTier}</dd></div>
+        <div className="v3-status-item"><dt>Next CP milestone</dt><dd>{profile.nextCpMilestoneTier === null ? 'All milestones reached' : `Tier ${profile.nextCpMilestoneTier}`}</dd></div>
+      </dl>
+    </section>
+  );
+}
+
 function VerifiedIslandPanel({
   island,
   profile,
@@ -311,6 +353,15 @@ function VerifiedIslandPanel({
   return (
     <>
       <article className="living-rebirth-card" id="rebirth" aria-labelledby="living-rebirth-title">
+        {!profile?.activeRun && profile?.authenticated && settlement?.openStartRun && (
+          <button
+            type="button"
+            className="living-rebirth-button living-rebirth-button--start-run"
+            onClick={settlement.openStartRun}
+          >
+            Start a Live run <span aria-hidden="true">→</span>
+          </button>
+        )}
         <div className="living-section-heading">
           <div>
             <span className="living-eyebrow">VERIFIED RUN</span>
@@ -899,6 +950,9 @@ export function LivingIslandScreen({
                   Boolean(verifiedActions?.pending && !verifiedActions.heartClickPending))
               }
             />
+            {mode === 'verified' && verifiedProfile?.ready && (
+              <VerifiedStatsPanel profile={verifiedProfile} />
+            )}
           </div>
           <aside className="living-control-panel" aria-label="Game controls">
             {mode === 'guest' ? (

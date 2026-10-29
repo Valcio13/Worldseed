@@ -181,7 +181,7 @@ describe('Living Island verified controls', () => {
     expect(screen.getByText('Advanced / Activity')).toBeTruthy();
 
     fireEvent.click(screen.getByText('Advanced / Activity'));
-    expect(screen.getByText('Technical run status')).toBeTruthy();
+    expect(container.querySelector('.v3-advanced-activity')?.hasAttribute('open')).toBe(true);
     fireEvent.click(screen.getByText('Live account'));
     expect(screen.getByRole('button', { name: 'Connect wallet' })).toBeTruthy();
   });

@@ -101,6 +101,22 @@ describe('local command verifier', () => {
     await expect(wrong.submit(request('x', 0))).rejects.toMatchObject({ code: 'RUN_NOT_FOUND' });
   });
 
+  it('reuses a wallet session from the previous run after the next run is verified on chain', async () => {
+    const priorRunSession = { ...session, runId: '41' };
+    const reusableAuth: WalletSessionAuthenticator = {
+      async authenticate(token) {
+        return token === 'valid' ? priorRunSession : null;
+      },
+    };
+    const { clock, authority, persistence } = setup();
+    const verifier = new LocalVerifier(reusableAuth, authority, persistence, clock);
+
+    await expect(verifier.submit(request('next-run-heart', 0))).resolves.toMatchObject({
+      accepted: true,
+      cursor: { runId: '42', sequence: 1 },
+    });
+  });
+
   it('accepts a command once and returns the prior result for an exact retry', async () => {
     const { verifier } = setup();
     const first = await verifier.submit(request('cmd-1', 0));

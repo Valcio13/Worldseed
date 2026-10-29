@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import { V3RunControls } from '../v3/components/V3RunControls';
-import { V3StatusPanel } from '../v3/components/V3StatusPanel';
 import { V3VerifiedGameplay } from '../v3/components/V3VerifiedGameplay';
 import type {
   V3IslandActionHandlers,
@@ -44,6 +43,7 @@ export interface V3LivingSettlementControls {
   pending: boolean;
   canSettle: boolean;
   error?: string | null;
+  openStartRun: () => void;
   recordPoints: () => void;
   rebirth: () => void;
 }
@@ -94,7 +94,6 @@ function VerifiedProgression({
   const settlement = useV3Settlement(auth.isAuthenticated ? auth.sessionToken : null);
   const settlementRef = useRef(settlement);
   const runStateRef = useRef(runState);
-  const authRef = useRef(auth);
   const startFlowRef = useRef<ReturnType<typeof useStartRunFlow> | null>(null);
   const flushPendingCommandsRef = useRef<(() => Promise<void>) | null>(null);
   const { connectAsync, connectors, isPending: connecting } = useConnect();
@@ -122,7 +121,6 @@ function VerifiedProgression({
   useEffect(() => {
     settlementRef.current = settlement;
     runStateRef.current = runState;
-    authRef.current = auth;
     startFlowRef.current = startFlow;
   }, [auth, runState, settlement, startFlow]);
   const authenticationRunId = activeVerifiedRunId ?? startFlow.nextRunId?.toString();
@@ -201,6 +199,8 @@ function VerifiedProgression({
     await startFlow.start(choices);
   }
 
+  const openStartRun = useCallback(() => setStartRunOpen(true), []);
+
   const canSettleRun = Boolean(
     hasActiveRun && auth.isAuthenticated && settlement.canSettle && !runState.loading,
   );
@@ -220,9 +220,8 @@ function VerifiedProgression({
       await flushPendingCommandsRef.current?.();
       await settlementRef.current.rebirth();
       playIslandSound('rebirth');
-      // A confirmed rebirth closes this run and makes the next session bind to
-      // counter + 1. End the old run-bound verifier session before refreshing.
-      authRef.current.logout();
+      // Keep the wallet session across runs. The verifier authorizes each new
+      // run against the connected wallet and confirmed chain state.
       const flow = startFlowRef.current;
       await Promise.allSettled([
         runStateRef.current.refetch(),
@@ -292,9 +291,10 @@ function VerifiedProgression({
     pending: transactionState === 'pending',
     canSettle: canSettleRun,
     error: walletError,
+    openStartRun,
     recordPoints: () => void recordRunPoints(),
     rebirth: () => void rebirthRun(),
-  }), [canSettleRun, recordRunPoints, rebirthRun, transactionState, walletError]);
+  }), [canSettleRun, openStartRun, recordRunPoints, rebirthRun, transactionState, walletError]);
 
   useEffect(() => onProfileChange(playerProfile), [onProfileChange, playerProfile]);
   useEffect(() => onSettlementControlsReady(settlementControls), [onSettlementControlsReady, settlementControls]);
@@ -477,7 +477,6 @@ function VerifiedProgression({
       <details className="v3-advanced-activity">
         <summary>Advanced / Activity</summary>
         <div className="v3-advanced-panel">
-          <V3StatusPanel runState={statusRunState} onRefetch={() => void runState.refetch()} />
         {settlement.status !== 'idle' && (
           <p className={`v3-living-flow v3-living-flow--${transactionState}`} role={settlement.status === 'failed' || settlement.status === 'uncertain' ? 'alert' : 'status'} aria-live="polite">
             {settlement.error ??

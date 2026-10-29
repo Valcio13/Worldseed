@@ -268,8 +268,6 @@ export function createLocalVerifierHttpServer(options: LocalVerifierHttpOptions)
       if (request.method === 'POST' && path === '/api/v3/runs/start-attestation') {
         const session = await authenticate(options, request, origin);
         const start = await options.chain.getStartRunContext(session.wallet);
-        if (start.runId.toString() !== session.runId)
-          throw new HttpError(409, 'Session is not bound to the next on-chain run ID.');
         const choices = parseChoices(body.upgradeChoices ?? []);
         const issuedAtMs = Number((await options.chain.getConfirmedTimestampSeconds()) * 1_000n);
         try {

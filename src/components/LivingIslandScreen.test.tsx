@@ -204,6 +204,7 @@ describe('Living Island screen', () => {
       rulesVersion: 1,
       habitats: [],
     };
+    const openStartRun = vi.fn();
     const props = {
       state: createEconomyState(1),
       mode: 'verified' as const,
@@ -242,6 +243,7 @@ describe('Living Island screen', () => {
       verifiedSettlement: {
         pending: false,
         canSettle: true,
+        openStartRun,
         recordPoints: vi.fn(),
         rebirth: vi.fn(),
       },
@@ -255,6 +257,9 @@ describe('Living Island screen', () => {
 
     expect(screen.getByText(/Settled balances/)).toBeInTheDocument();
     expect(screen.getByLabelText('Estimated Rebirth rewards')).toHaveTextContent('+1 PP · +0 CP');
+    const islandScene = screen.getByRole('region', { name: /Live Living Island/ });
+    const liveStats = screen.getByRole('region', { name: 'Live account stats' });
+    expect(islandScene.compareDocumentPosition(liveStats) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     rerender(
       <LivingIslandScreen
@@ -264,6 +269,16 @@ describe('Living Island screen', () => {
     );
     expect(screen.getByLabelText('Estimated Rebirth rewards')).toHaveTextContent('+1 PP · +1 CP');
     expect(screen.getByText(/Next CP milestone after Rebirth/)).toHaveTextContent('49');
+
+    rerender(
+      <LivingIslandScreen
+        {...props}
+        verifiedIsland={null}
+        verifiedProfile={{ ...props.verifiedProfile, activeRun: false }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Start a Live run' }));
+    expect(openStartRun).toHaveBeenCalledOnce();
   });
 
   it('keeps Live Heart clicks enabled while queued Heart commands sync', () => {

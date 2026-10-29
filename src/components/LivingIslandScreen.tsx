@@ -847,27 +847,27 @@ export function LivingIslandScreen({
 
   useEffect(() => {
     const dropdownSelector = '.audio-settings, .v3-living-account, .v3-advanced-activity';
-    const closeOtherDropdowns = (event: MouseEvent) => {
-      const activeDropdown =
-        event.target instanceof Element
-          ? event.target.closest<HTMLDetailsElement>(dropdownSelector)
-          : null;
+    const closeOtherDropdowns = (event: globalThis.MouseEvent) => {
+      const target = event.target as { closest?: (selector: string) => unknown } | null;
+      const activeDropdown = target?.closest?.(dropdownSelector) as { open: boolean } | null;
 
-      document.querySelectorAll<HTMLDetailsElement>(dropdownSelector).forEach((dropdown) => {
+      document.querySelectorAll(dropdownSelector).forEach((element) => {
+        const dropdown = element as unknown as { open: boolean };
         if (dropdown !== activeDropdown) dropdown.open = false;
       });
     };
-    const closeDropdownsOnEscape = (event: KeyboardEvent) => {
+    const closeDropdownsOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      const openDropdown = document.querySelector<HTMLDetailsElement>(
-        `${dropdownSelector}[open]`,
+      const dropdowns = Array.from(document.querySelectorAll(dropdownSelector));
+      const openDropdown = dropdowns.find(
+        (element) => (element as unknown as { open: boolean }).open,
       );
       if (!openDropdown) return;
       event.preventDefault();
-      document.querySelectorAll<HTMLDetailsElement>(`${dropdownSelector}[open]`).forEach((dropdown) => {
-        dropdown.open = false;
+      dropdowns.forEach((element) => {
+        (element as unknown as { open: boolean }).open = false;
       });
-      openDropdown.querySelector('summary')?.focus();
+      (openDropdown.querySelector('summary') as unknown as { focus: () => void } | null)?.focus();
     };
 
     document.addEventListener('click', closeOtherDropdowns);

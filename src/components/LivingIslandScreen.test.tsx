@@ -75,7 +75,7 @@ describe('Living Island screen', () => {
     fireEvent.click(document.body);
     expect(audio).not.toHaveAttribute('open');
 
-    (audio as HTMLDetailsElement).open = true;
+    (audio as unknown as { open: boolean }).open = true;
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(audio).not.toHaveAttribute('open');
   });
@@ -295,7 +295,10 @@ describe('Living Island screen', () => {
     expect(screen.getByLabelText('Estimated Rebirth rewards')).toHaveTextContent('+1 PP · +0 CP');
     const islandScene = screen.getByRole('region', { name: /Live Living Island/ });
     const liveStats = screen.getByRole('region', { name: 'Live account stats' });
-    expect(islandScene.compareDocumentPosition(liveStats) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      islandScene.compareDocumentPosition(liveStats) &
+        window.Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     rerender(
       <LivingIslandScreen

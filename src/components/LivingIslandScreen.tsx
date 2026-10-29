@@ -34,6 +34,7 @@ import type { V3IslandSnapshot } from '../v3/components/V3VerifiedGameplay';
 import type { V3IslandActionHandlers } from '../v3/components/V3VerifiedGameplay';
 import { V3_UPGRADE_CONFIG, type V3UpgradeKind } from '../v3/types';
 import { calculateV3RebirthRewardPreview } from '../v3/rebirthRewardPreview';
+import { v3Api, type V3SeasonalLeaderboardResponse } from '../v3/api';
 import type { V3LivingProfile, V3LivingSettlementControls } from './V3IntegrationShell';
 
 type HabitatUpgradeState = 'locked' | 'available' | 'unaffordable' | 'purchased';
@@ -151,6 +152,29 @@ function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
     : false;
+}
+
+function formatSeasonNature(atoms: string): string {
+  try {
+    const value = BigInt(atoms);
+    const scale = 1_000_000_000_000n;
+    const whole = value / scale;
+    const fraction = (value % scale).toString().padStart(12, '0').slice(0, 2);
+    return `${whole.toLocaleString()}${fraction === '00' ? '' : `.${fraction.replace(/0$/, '')}`}`;
+  } catch {
+    return '—';
+  }
+}
+
+function leaderboardCPPercent(current: string | undefined, target: string | undefined): number {
+  try {
+    const amount = BigInt(current ?? '0');
+    const cap = BigInt(target ?? '0');
+    if (cap <= 0n) return 0;
+    return Number((amount >= cap ? 10_000n : (amount * 10_000n) / cap)) / 100;
+  } catch {
+    return 0;
+  }
 }
 
 function randomBetween([min, max]: [number, number]): number {
@@ -838,12 +862,51 @@ export function LivingIslandScreen({
 }: LivingIslandScreenProps) {
   const reward = rebirthReward(state);
   const progress = rebirthProgress(state);
+  const [howToPlayOpen, setHowToPlayOpen] = useState(false);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<V3SeasonalLeaderboardResponse | null>(null);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
   const [noticePresentation, setNoticePresentation] = useState<{
     text: string;
     important: boolean;
     exiting: boolean;
   } | null>(null);
   const noticeExitTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  useEffect(() => {
+    const dialog = document.querySelector('.living-how-to-play-dialog') as unknown as {
+      open: boolean;
+      showModal: () => void;
+      close: () => void;
+    } | null;
+    if (!dialog) return;
+    if (howToPlayOpen && !dialog.open) dialog.showModal();
+    if (!howToPlayOpen && dialog.open) dialog.close();
+  }, [howToPlayOpen]);
+
+  useEffect(() => {
+    const dialog = document.querySelector('.living-leaderboard-dialog') as unknown as {
+      open: boolean;
+      showModal: () => void;
+      close: () => void;
+    } | null;
+    if (!dialog) return;
+    if (leaderboardOpen && !dialog.open) dialog.showModal();
+    if (!leaderboardOpen && dialog.open) dialog.close();
+  }, [leaderboardOpen]);
+
+  const refreshLeaderboard = async () => {
+    setLeaderboardLoading(true);
+    setLeaderboardError(null);
+    try {
+      setLeaderboard(await v3Api.seasonalLeaderboard());
+    } catch {
+      setLeaderboardError('Leaderboard is temporarily unavailable. Please try again.');
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  };
 
   useEffect(() => {
     const dropdownSelector = '.audio-settings, .v3-living-account, .v3-advanced-activity';
@@ -926,6 +989,29 @@ export function LivingIslandScreen({
             <span className="v3-mode-badge" title="Guest progress is saved locally in this browser">
               Guest
             </span>
+          )}
+          <button
+            className="living-help-trigger"
+            type="button"
+            aria-label="How to play"
+            aria-haspopup="dialog"
+            onClick={() => setHowToPlayOpen(true)}
+          >
+            <span>How to play</span>
+            <b aria-hidden="true">?</b>
+          </button>
+          {verifiedModeEnabled && (
+            <button
+              className="living-help-trigger living-leaderboard-trigger"
+              type="button"
+              aria-haspopup="dialog"
+              onClick={() => {
+                setLeaderboardOpen(true);
+                void refreshLeaderboard();
+              }}
+            >
+              Leaderboard
+            </button>
           )}
           {mode === 'guest' && (
             <span
@@ -1238,6 +1324,117 @@ export function LivingIslandScreen({
           </button>
         </div>
       )}
+      <dialog
+        className="living-how-to-play-dialog"
+        aria-labelledby="living-how-to-play-title"
+        onClose={() => setHowToPlayOpen(false)}
+      >
+        <header>
+          <div>
+            <span className="living-eyebrow">WORLDSEED GUIDE</span>
+            <h2 id="living-how-to-play-title">How to play</h2>
+          </div>
+          <button
+            type="button"
+            aria-label="Close How to play"
+            onClick={() => setHowToPlayOpen(false)}
+          >
+            ×
+          </button>
+        </header>
+        <div className="living-how-to-play-content">
+          <p className="living-how-to-play-intro">
+            {mode === 'verified'
+              ? 'Grow your Live island and settle progress through the verifier.'
+              : 'Grow your island, build production, and begin again stronger.'}
+          </p>
+          <ol>
+            {mode === 'verified' ? (
+              <>
+                <li><strong>Start a Live run.</strong><span>Open your Live account and start a run. Guest progress stays separate.</span></li>
+                <li><strong>Collect and build.</strong><span>Click the Island Heart for Nature, then buy habitats to generate Nature over time.</span></li>
+                <li><strong>Record or Rebirth.</strong><span>Record Points saves an optional checkpoint. Reach the score goal and Rebirth to settle rewards.</span></li>
+                <li><strong>Continue.</strong><span>After Rebirth settles, start another Live run and use your available seasonal PP.</span></li>
+              </>
+            ) : (
+              <>
+                <li><strong>Collect Nature.</strong><span>Click the glowing Island Heart to gather Nature.</span></li>
+                <li><strong>Grow production.</strong><span>Spend Nature on habitats; they generate Nature automatically. Habitat upgrades boost their production.</span></li>
+                <li><strong>Use boosts.</strong><span>Nature boosts can speed up a run when their costs and requirements are met.</span></li>
+                <li><strong>Rebirth.</strong><span>Reach the Nature goal to reset this run and earn simulated seasonal points for upgrades.</span></li>
+              </>
+            )}
+          </ol>
+          <p className="living-how-to-play-note">
+            {mode === 'verified'
+              ? 'Live rewards are verifier-backed. Guest saves and simulated rewards never convert into Live rewards.'
+              : 'Guest progress is saved in this browser. Guest points are simulated and are not wallet rewards.'}
+          </p>
+        </div>
+      </dialog>
+      <dialog
+        className="living-how-to-play-dialog living-leaderboard-dialog"
+        aria-labelledby="living-leaderboard-title"
+        onClose={() => setLeaderboardOpen(false)}
+      >
+        <header>
+          <div>
+            <span className="living-eyebrow">LIVE SEASON</span>
+            <h2 id="living-leaderboard-title">Leaderboard</h2>
+          </div>
+          <button type="button" aria-label="Close leaderboard" onClick={() => setLeaderboardOpen(false)}>
+            ×
+          </button>
+        </header>
+        <div className="living-how-to-play-content living-leaderboard-content">
+          <p className="living-how-to-play-intro">
+            Season {leaderboard?.seasonId ?? '—'} · confirmed Rebirth settlements only
+          </p>
+          <section className="living-community-cp" aria-label="Community seasonal CP progress">
+            <div><strong>Community CP</strong><span>{leaderboard?.communityCP ? BigInt(leaderboard.communityCP).toLocaleString() : '0'} / {leaderboard?.communityCPCap ? BigInt(leaderboard.communityCPCap).toLocaleString() : '—'}</span></div>
+            <div
+              className="living-community-cp-track"
+              role="progressbar"
+              aria-label="Community seasonal CP cap"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={leaderboardCPPercent(leaderboard?.communityCP, leaderboard?.communityCPCap)}
+            >
+              <i style={{ width: `${leaderboardCPPercent(leaderboard?.communityCP, leaderboard?.communityCPCap)}%` }} />
+            </div>
+            <small>Season-wide verified CP earned toward the contract’s shared cap.</small>
+          </section>
+          <p className="living-leaderboard-note">
+            Nature is counted when a run settles through Rebirth. Active-run Nature is not included yet.
+          </p>
+          {leaderboardLoading && <p role="status">Updating confirmed results…</p>}
+          {leaderboardError && <p role="alert">{leaderboardError}</p>}
+          {leaderboard?.indexing && (
+            <p role="status">Indexing confirmed season history. Reopen or refresh to continue.</p>
+          )}
+          <div className="living-leaderboard-table-wrap">
+            <table className="living-leaderboard-table">
+              <thead><tr><th>#</th><th>Player</th><th>Nature earned</th><th>CP</th></tr></thead>
+              <tbody>
+                {leaderboard?.entries.map((entry) => (
+                  <tr key={entry.wallet}>
+                    <td>{entry.rank}</td>
+                    <td><code>{`${entry.wallet.slice(0, 6)}…${entry.wallet.slice(-4)}`}</code></td>
+                    <td>{formatSeasonNature(entry.settledNatureAtoms)}</td>
+                    <td>{entry.cpEarned}</td>
+                  </tr>
+                ))}
+                {leaderboard && leaderboard.entries.length === 0 && !leaderboardLoading && (
+                  <tr><td colSpan={4}>No settled Rebirths in this season yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <button className="living-primary-button" type="button" onClick={() => void refreshLeaderboard()} disabled={leaderboardLoading}>
+            {leaderboardLoading ? 'Updating…' : 'Refresh leaderboard'}
+          </button>
+        </div>
+      </dialog>
     </div>
   );
 }

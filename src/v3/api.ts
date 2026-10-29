@@ -268,6 +268,25 @@ export interface V3HealthResponse {
   ok: boolean;
 }
 
+export interface V3SeasonalLeaderboardEntry {
+  rank: number;
+  wallet: `0x${string}`;
+  settledNatureAtoms: string;
+  cpEarned: string;
+}
+
+export interface V3SeasonalLeaderboardResponse {
+  seasonId: string;
+  communityCP: string;
+  communityCPCap: string;
+  entries: V3SeasonalLeaderboardEntry[];
+  indexing: boolean;
+  scannedThrough: number;
+  confirmedHead: string;
+  scannedBlocks: string;
+  natureScale: string;
+}
+
 /**
  * Parse verifier error response
  */
@@ -348,6 +367,11 @@ export const v3Api = {
     }
     const response = await fetch(url);
     return response.json();
+  },
+
+  /** Read-only current-season leaderboard indexed from confirmed RebirthSettled events. */
+  async seasonalLeaderboard(): Promise<V3SeasonalLeaderboardResponse> {
+    return makeRequest('/api/v3/leaderboard', { method: 'GET' });
   },
 
   /**

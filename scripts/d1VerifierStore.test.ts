@@ -21,6 +21,7 @@ import type {
 import { WorkersWalletSessions } from '../src/incremental/server/workersWalletSessions';
 import { createWorkerVerifierHandler } from '../src/incremental/worker/httpHandler';
 import workerEntrypoint from '../src/incremental/worker/index';
+import { SeasonalLeaderboard } from '../src/incremental/worker/leaderboard';
 
 const TEST_KEY = `0x${'11'.repeat(32)}` as const;
 const TEST_CHAIN_ID = 31_337n;
@@ -93,6 +94,7 @@ describe('Workers D1 verifier persistence adapter', () => {
       '0001_v3_verifier.sql',
       '0002_verifier_journal_snapshots.sql',
       '0003_run_started_event_scans.sql',
+      '0004_seasonal_leaderboard.sql',
     ]) {
       const migration = readFileSync(new URL(`../migrations/${name}`, import.meta.url), 'utf8');
       for (const statement of migration
@@ -756,5 +758,79 @@ describe('Workers D1 verifier persistence adapter', () => {
     );
     assert.equal((await store.read(runKey))?.headSequence, 0);
     database.exec('DROP TRIGGER reject_test_command');
+  });
+});
+
+describe('seasonal leaderboard indexing', () => {
+  it('resumes bounded confirmed-event scans and aggregates settled Nature and CP once', async () => {
+    const db = new SqliteD1TestDouble();
+    const migration = readFileSync(new URL('../migrations/0004_seasonal_leaderboard.sql', import.meta.url), 'utf8');
+    for (const statement of migration.split(/;\s*\r?\n\s*\r?\n/).map((s) => s.trim()).filter(Boolean))
+      await db.prepare(statement).run();
+    const player = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as const;
+    const contract = TEST_CONTRACT as `0x${string}`;
+    const common = {
+      player,
+      runId: 1n,
+      seasonId: 9n,
+      scoreTier: 42,
+      blockHash: BLOCK_HASH as `0x${string}`,
+    };
+    const chain = {
+      getLeaderboardHead: async () => ({
+        seasonId: 9n,
+        confirmedBlock: 3_150n,
+        confirmedBlockHash: BLOCK_HASH as `0x${string}`,
+        communityCP: 120n,
+        communityCPCap: 1_000_000n,
+      }),
+      getLeaderboardBlockHash: async () => BLOCK_HASH as `0x${string}`,
+      getRebirthSettlementLogs: async (from: bigint, to: bigint) => {
+        if (from !== 3_100n || to !== 3_150n) return [];
+        return [
+          { ...common, cpAwarded: 2n, natureCollectedAtoms: 15_250_000_000_000n, blockNumber: 3_120n, transactionHash: `0x${'01'.repeat(32)}` as `0x${string}`, logIndex: 0 },
+          { ...common, runId: 2n, cpAwarded: 1n, natureCollectedAtoms: 4_000_000_000_000n, blockNumber: 3_140n, transactionHash: `0x${'02'.repeat(32)}` as `0x${string}`, logIndex: 0 },
+        ];
+      },
+    };
+    const leaderboard = new SeasonalLeaderboard(db, chain, String(TEST_CHAIN_ID), contract, 2_100n, () => NOW);
+    const first = await leaderboard.getCurrentSeason();
+    assert.equal(first.indexing, true);
+    const completed = await leaderboard.getCurrentSeason();
+    assert.equal(completed.indexing, false);
+    assert.equal(completed.seasonId, '9');
+    assert.equal(completed.communityCP, '120');
+    assert.equal(completed.communityCPCap, '1000000');
+    assert.deepEqual(completed.entries, [{
+      rank: 1,
+      wallet: player,
+      settledNatureAtoms: '19250000000000',
+      cpEarned: '3',
+    }]);
+    const repeated = await leaderboard.getCurrentSeason();
+    assert.deepEqual(repeated.entries, completed.entries);
+    db.close();
+  });
+
+  it('serves the leaderboard as a public read-only CORS endpoint', async () => {
+    const responseBody = {
+      seasonId: '9', communityCP: '120', communityCPCap: '1000000', entries: [], indexing: false, scannedThrough: 100, confirmedHead: '100',
+      scannedBlocks: '0', natureScale: '1000000000000',
+    };
+    const handler = createWorkerVerifierHandler({
+      allowedOrigins: new Set([TEST_ORIGIN]),
+      store: {} as never,
+      sessions: {} as never,
+      verifier: {} as never,
+      chain: {} as never,
+      issuer: {} as never,
+      leaderboard: { getCurrentSeason: async () => responseBody } as never,
+    });
+    const response = await handler(new Request('https://verifier.example/api/v3/leaderboard', {
+      headers: { Origin: TEST_ORIGIN },
+    }));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('access-control-allow-origin'), TEST_ORIGIN);
+    assert.deepEqual(await response.json(), responseBody);
   });
 });

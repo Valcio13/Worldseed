@@ -6,6 +6,7 @@ import { D1VerifierStore } from '../server/d1VerifierStore';
 import { V3ChainStateReader, createV3RpcClient } from '../server/v3ChainReader';
 import { WorkersWalletSessions } from '../server/workersWalletSessions';
 import { createWorkerVerifierHandler } from './httpHandler';
+import { SeasonalLeaderboard } from './leaderboard';
 import type { WorldseedWorkerEnv } from './env';
 
 function required(value: string | undefined, name: string): string {
@@ -79,6 +80,13 @@ function configured(env: WorldseedWorkerEnv) {
   const verifier = new LocalVerifier(sessions, reader, store, { nowMilliseconds: Date.now });
   const signer = privateKeyToAccount(privateKey);
   const issuer = new V3AttestationIssuer(store, reader, signer, BigInt(chainId), contractAddress);
+  const leaderboard = new SeasonalLeaderboard(
+    env.WORLDSEED_DB,
+    reader,
+    String(chainId),
+    contractAddress,
+    deploymentBlock,
+  );
   const handler = createWorkerVerifierHandler({
     allowedOrigins: origins,
     store,
@@ -86,6 +94,7 @@ function configured(env: WorldseedWorkerEnv) {
     verifier,
     chain: reader,
     issuer,
+    leaderboard,
   });
   return { handler, origins };
 }

@@ -15,6 +15,7 @@ import { AttestationConflictError, type V3AttestationIssuer } from '../server/at
 import type { V3ChainStateReader } from '../server/v3ChainReader';
 import type { D1VerifierStore } from '../server/d1VerifierStore';
 import type { WorkersWalletSessions } from '../server/workersWalletSessions';
+import type { SeasonalLeaderboard } from './leaderboard';
 
 const BODY_LIMIT = 64 * 1024;
 const ZERO_HASH = `0x${'00'.repeat(32)}` as Hex;
@@ -27,6 +28,7 @@ export interface WorkerVerifierHttpOptions {
   verifier: LocalVerifier;
   chain: V3ChainStateReader;
   issuer: V3AttestationIssuer;
+  leaderboard?: SeasonalLeaderboard;
 }
 
 class HttpError extends Error {
@@ -238,6 +240,15 @@ export function createWorkerVerifierHandler(options: WorkerVerifierHttpOptions) 
         throw new HttpError(404, 'Verifier endpoint was not found.');
       if (!origin || !options.allowedOrigins.has(origin))
         throw new HttpError(403, 'Request origin is not allowed.');
+      if (request.method === 'GET' && url.pathname === '/api/v3/leaderboard') {
+        if (!options.leaderboard)
+          throw new HttpError(503, 'Seasonal leaderboard is not configured.', 'LEADERBOARD_UNAVAILABLE');
+        try {
+          return json(await options.leaderboard.getCurrentSeason(), 200, cors);
+        } catch {
+          throw new HttpError(503, 'Seasonal leaderboard is temporarily unavailable.', 'LEADERBOARD_UNAVAILABLE');
+        }
+      }
       const body = request.method === 'POST' ? await readBody(request) : {};
 
       if (request.method === 'POST' && url.pathname === '/api/v3/auth/challenge') {

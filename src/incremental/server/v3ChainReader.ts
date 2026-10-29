@@ -30,6 +30,8 @@ import { VerifierError } from '../verifierProtocol';
 /** Proposed V3 ABI. Keep synchronized with the reviewed design and add Solidity tests before deployment. */
 export const V3_READ_ABI = parseAbi([
   'function currentSeasonId() view returns (uint64)',
+  'function totalSeasonCP(uint64 seasonId) view returns (uint256)',
+  'function MAX_SEASON_POINTS() view returns (uint256)',
   'function activeRunId(address player) view returns (uint64)',
   'function runs(address player, uint64 runId) view returns (uint64 seasonId, uint8 status, uint64 startedAt, uint16 lastRecordedScoreTier, uint32 rulesVersion, bytes32 upgradeChoicesHash)',
   'function seasonalPP(address player, uint64 seasonId) view returns (uint256)',
@@ -50,6 +52,22 @@ export const V3_READ_ABI = parseAbi([
 export const V3_RUN_STARTED_ABI = parseAbi([
   'event RunStarted(address indexed player, uint64 indexed runId, uint64 indexed seasonId, uint32 rulesVersion, bytes32 upgradeChoicesHash, uint64 startedAt, (uint8 upgradeId, uint16 quantity)[] upgradeChoices)',
 ]);
+export const V3_REBIRTH_SETTLED_ABI = parseAbi([
+  'event RebirthSettled(address indexed player, uint64 indexed runId, uint64 indexed seasonId, uint16 scoreTier, uint256 ppAwarded, uint256 cpAwarded, uint64 nonce, uint32 rulesVersion, uint256 natureCollectedAtoms)',
+]);
+
+export interface V3RebirthSettlementLog {
+  player: Address;
+  runId: bigint;
+  seasonId: bigint;
+  scoreTier: number;
+  cpAwarded: bigint;
+  natureCollectedAtoms: bigint;
+  blockNumber: bigint;
+  blockHash: Hex;
+  transactionHash: Hex;
+  logIndex: number;
+}
 
 const UPGRADE_BY_ID = new Map<number, UpgradeChoice['upgradeId']>(
   Object.entries(SOLIDITY_UPGRADE_IDS).map(([name, id]) => [
@@ -183,6 +201,74 @@ export class V3ChainStateReader implements RunAuthorityReader {
     this.client =
       options.client ??
       createPublicClient({ chain: this.config.chain, transport: http(this.config.rpcUrl) });
+  }
+
+  async getLeaderboardHead(): Promise<{
+    seasonId: bigint;
+    confirmedBlock: bigint;
+    confirmedBlockHash: Hex;
+    communityCP: bigint;
+    communityCPCap: bigint;
+  }> {
+    const confirmedBlock = await this.confirmedBlockNumber();
+    const [seasonId, block, communityCPCap] = await Promise.all([
+      this.client.readContract({
+        address: this.config.contractAddress,
+        abi: V3_READ_ABI,
+        functionName: 'currentSeasonId',
+        blockNumber: confirmedBlock,
+      }),
+      this.client.getBlock({ blockNumber: confirmedBlock }),
+      this.client.readContract({
+        address: this.config.contractAddress,
+        abi: V3_READ_ABI,
+        functionName: 'MAX_SEASON_POINTS',
+        blockNumber: confirmedBlock,
+      }),
+    ]);
+    if (!block.hash) throw new Error('Confirmed leaderboard block has no hash.');
+    const communityCP = await this.client.readContract({
+      address: this.config.contractAddress,
+      abi: V3_READ_ABI,
+      functionName: 'totalSeasonCP',
+      args: [seasonId],
+      blockNumber: confirmedBlock,
+    });
+    return { seasonId, confirmedBlock, confirmedBlockHash: block.hash, communityCP, communityCPCap };
+  }
+
+  async getLeaderboardBlockHash(blockNumber: bigint): Promise<Hex> {
+    const block = await this.client.getBlock({ blockNumber });
+    if (!block.hash) throw new Error('Leaderboard checkpoint block has no hash.');
+    return block.hash;
+  }
+
+  async getRebirthSettlementLogs(
+    fromBlock: bigint,
+    toBlock: bigint,
+  ): Promise<V3RebirthSettlementLog[]> {
+    const logs = await this.client.getLogs({
+      address: this.config.contractAddress,
+      event: V3_REBIRTH_SETTLED_ABI[0],
+      fromBlock,
+      toBlock,
+    });
+    return logs.map((log) => {
+      if (!log.args.player || log.blockNumber === null || !log.blockHash || !log.transactionHash || log.logIndex === null)
+        throw new Error('Rebirth settlement log is missing canonical identifying data.');
+      return {
+        player: log.args.player,
+        runId: log.args.runId!,
+        seasonId: log.args.seasonId!,
+        scoreTier: log.args.scoreTier!,
+        cpAwarded: log.args.cpAwarded!,
+        natureCollectedAtoms: log.args.natureCollectedAtoms!,
+        blockNumber: log.blockNumber,
+        blockHash: log.blockHash,
+        transactionHash: log.transactionHash,
+        logIndex: log.logIndex,
+      };
+    });
   }
 
   async getStartRunContext(wallet: string): Promise<V3StartRunContext> {

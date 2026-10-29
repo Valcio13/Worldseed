@@ -9,7 +9,6 @@ import {
   habitatBulkCost,
   habitatProductionPerSecond,
   habitatProductionUpgradeCost,
-  habitatUnitCost,
   PP_UPGRADE_CONFIG,
   ppUpgradeCost,
   rebirthRequirement,
@@ -18,6 +17,7 @@ import {
   productionPerSecond,
   type ActionResult,
   type EconomyState,
+  type BuyAmount,
   type HabitatKind,
   type PPUpgrade,
 } from '../incremental/engine';
@@ -464,16 +464,44 @@ function VerifiedStatsPanel({ profile }: { profile: V3LivingProfile }) {
   );
 }
 
+function HabitatBuySelector({
+  value,
+  onChange,
+}: {
+  value: BuyAmount;
+  onChange: (amount: BuyAmount) => void;
+}) {
+  const options: BuyAmount[] = [1, 10, 100, 'max'];
+  return (
+    <div className="living-habitat-buy-quantity" role="group" aria-label="Habitat purchase quantity">
+      {options.map((amount) => (
+        <button
+          key={amount}
+          type="button"
+          aria-pressed={value === amount}
+          onClick={() => onChange(amount)}
+        >
+          {amount === 'max' ? 'Max' : `${amount}x`}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function VerifiedIslandPanel({
   island,
   profile,
   actions,
   settlement,
+  habitatBuyAmount,
+  setHabitatBuyAmount,
 }: {
   island: V3IslandSnapshot | null;
   profile: V3LivingProfile | null;
   actions: V3IslandActionHandlers | null;
   settlement: V3LivingSettlementControls | null;
+  habitatBuyAmount: BuyAmount;
+  setHabitatBuyAmount: (amount: BuyAmount) => void;
 }) {
   const scoreTier = island?.scoreTier ?? 0;
   const rebirthGoal = profile?.rebirthThresholdTier ?? 0;
@@ -606,11 +634,12 @@ function VerifiedIslandPanel({
       </article>
 
       <section className="living-shop" aria-labelledby="habitat-shop-title">
-        <div className="living-section-heading">
+        <div className="living-section-heading living-shop-heading">
           <div>
             <span className="living-eyebrow">VERIFIER-ACCEPTED PROGRESS</span>
             <h1 id="habitat-shop-title">Habitat shop</h1>
           </div>
+          <HabitatBuySelector value={habitatBuyAmount} onChange={setHabitatBuyAmount} />
         </div>
         {!island?.habitats.length ? (
           <p className="living-verified-empty" role="status">
@@ -624,6 +653,9 @@ function VerifiedIslandPanel({
           <div className="living-habitat-list">
             {island.habitats.map((habitat) => {
               const info = habitatNames[habitat.id];
+              const quantity = habitatBuyAmount === 'max' ? habitat.maxAffordable : habitatBuyAmount;
+              const costKey = habitatBuyAmount === 1 ? 'one' : habitatBuyAmount === 10 ? 'ten' : habitatBuyAmount === 100 ? 'hundred' : 'max';
+              const cost = habitat.purchaseCosts[costKey];
               return (
                 <article className={`living-habitat living-habitat--${habitat.id}`} key={habitat.id}>
                   <span className="living-habitat-icon" aria-hidden="true">{info.icon}</span>
@@ -633,26 +665,14 @@ function VerifiedIslandPanel({
                     <small>{info.description}</small>
                   </div>
                   <div className="living-habitat-actions">
-                    {[1, 10, 100].map((quantity) => (
-                      <button
-                        key={quantity}
-                        type="button"
-                        onClick={() => actions?.buyHabitat(habitat.id, quantity)}
-                        disabled={!actions || actions.pending || habitat.maxAffordable < quantity}
-                        aria-label={`Buy ${quantity} Live ${info.name}`}
-                        title={`Buy ${quantity} ${info.name}`}
-                      >
-                        {quantity}×{quantity === 1 && <small>{habitat.nextCost ?? '—'}</small>}
-                      </button>
-                    ))}
                     <button
                       type="button"
-                      onClick={() => actions?.buyHabitat(habitat.id, habitat.maxAffordable)}
-                      disabled={!actions || actions.pending || habitat.maxAffordable < 1}
-                      aria-label={`Buy maximum Live ${info.name}`}
-                      title={`Buy maximum ${info.name}`}
+                      onClick={() => actions?.buyHabitat(habitat.id, quantity)}
+                      disabled={!actions || actions.pending || quantity < 1 || habitat.maxAffordable < quantity}
+                      aria-label={`Buy ${habitatBuyAmount === 'max' ? `maximum (${quantity})` : `${quantity}`} ${info.name} for ${cost ?? 'unknown cost'} Nature`}
                     >
-                      Max
+                      <span>{habitatBuyAmount === 'max' ? `Buy max · ${quantity}` : `Buy ${quantity}×`}</span>
+                      <small>{cost === null ? '—' : `${cost} Nature`}</small>
                     </button>
                   </div>
                   {habitat.productionUpgrades.length > 0 && (
@@ -1002,6 +1022,7 @@ export function LivingIslandScreen({
 }: LivingIslandScreenProps) {
   const reward = rebirthReward(state);
   const progress = rebirthProgress(state);
+  const [habitatBuyAmount, setHabitatBuyAmount] = useState<BuyAmount>(1);
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [leaderboard, setLeaderboard] = useState<V3SeasonalLeaderboardResponse | null>(null);
@@ -1290,21 +1311,28 @@ export function LivingIslandScreen({
                 </article>
 
                 <section className="living-shop" aria-labelledby="habitat-shop-title">
-              <div className="living-section-heading">
+              <div className="living-section-heading living-shop-heading">
                 <div>
                   <span className="living-eyebrow">HELP YOUR ISLAND GROW</span>
                   <h1 id="habitat-shop-title">Habitat shop</h1>
                 </div>
+                <HabitatBuySelector value={habitatBuyAmount} onChange={setHabitatBuyAmount} />
               </div>
               <div className="living-habitat-list">
                 {ECONOMY_HABITATS.map((id) => {
                   const { name, icon, description } = HABITAT_PRESENTATION[id];
                   const owned = state.habitats[id] ?? 0;
-                  const one = calculateBuyQuantity(state, id, 1);
-                  const ten = calculateBuyQuantity(state, id, 10);
-                  const hundred = calculateBuyQuantity(state, id, 100);
                   const max = calculateBuyQuantity(state, id, 'max');
-                  const oneCost = habitatUnitCost(state, id);
+                  const purchaseQuantity = habitatBuyAmount === 'max' ? max : habitatBuyAmount;
+                  const purchaseCost = purchaseQuantity > 0
+                    ? habitatBulkCost(state, id, purchaseQuantity)
+                    : null;
+                  const affordable = purchaseQuantity > 0 &&
+                    (habitatBuyAmount === 'max' || calculateBuyQuantity(state, id, habitatBuyAmount) === habitatBuyAmount) &&
+                    purchaseCost !== null && compareValues(purchaseCost, state.nature) <= 0;
+                  const purchaseLabel = habitatBuyAmount === 'max'
+                    ? `Buy max · ${max}`
+                    : `Buy ${habitatBuyAmount}×`;
                   const purchasedUpgradeCount = state.habitatProductionUpgrades?.[id] ?? 0;
                   const habitatProduction = habitatProductionPerSecond(state, id);
                   return (
@@ -1321,32 +1349,14 @@ export function LivingIslandScreen({
                         <small>{description}</small>
                       </div>
                       <div className="living-habitat-actions">
-                        {([1, 10, 100] as const).map((quantity) => {
-                          const availableQuantity = quantity === 1 ? one :
-                            (quantity === 10 ? ten : hundred);
-                          const affordable = availableQuantity === quantity &&
-                            compareValues(habitatBulkCost(state, id, quantity), state.nature) <= 0;
-                          return (
-                            <button
-                              key={quantity}
-                              type="button"
-                              onClick={() => onStateChange(buyHabitat(state, id, quantity))}
-                              disabled={!affordable}
-                              aria-label={`Buy ${quantity} ${name}`}
-                              title={`Buy ${quantity} ${name}`}
-                            >
-                              {quantity}×{quantity === 1 && <small>{formatValue(oneCost)}</small>}
-                            </button>
-                          );
-                        })}
                         <button
                           type="button"
-                          onClick={() => onStateChange(buyHabitat(state, id, 'max'))}
-                          disabled={max === 0}
-                          aria-label={`Buy maximum ${name}`}
-                          title={`Buy maximum ${name}`}
+                          onClick={() => onStateChange(buyHabitat(state, id, habitatBuyAmount))}
+                          disabled={!affordable}
+                          aria-label={`${purchaseLabel} ${name} for ${purchaseCost === null ? 'unknown cost' : `${formatValue(purchaseCost)} Nature`}`}
                         >
-                          Max
+                          <span>{purchaseLabel}</span>
+                          <small>{purchaseCost === null ? '—' : `${formatValue(purchaseCost)} Nature`}</small>
                         </button>
                       </div>
                       <details className="living-habitat-upgrades">
@@ -1469,6 +1479,8 @@ export function LivingIslandScreen({
                   profile={verifiedProfile}
                   actions={verifiedActions}
                   settlement={verifiedSettlement}
+                  habitatBuyAmount={habitatBuyAmount}
+                  setHabitatBuyAmount={setHabitatBuyAmount}
                 />
               </>
             )}

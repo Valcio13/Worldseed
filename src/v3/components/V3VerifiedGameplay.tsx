@@ -54,6 +54,7 @@ export interface V3IslandSnapshot {
     nextCost: string | null;
     canBuyOne: boolean;
     maxAffordable: number;
+    purchaseCosts: { one: string | null; ten: string | null; hundred: string | null; max: string | null };
     purchasedUpgradeCount: number;
     productionUpgrades: Array<{
       milestone: number;
@@ -208,6 +209,12 @@ function toIslandSnapshot(
   const habitats = habitatsForVerifiedState(displayState).map((id) => {
     const level = habitatLevelForVerifiedState(displayState, id) ?? 0;
     const nextCost = habitatPurchaseCostForVerifiedState(displayState, id, 1);
+    const maxAffordable = maxAffordableQuantity({ ...displayState, natureAtoms: estimatedNatureAtoms }, id);
+    const purchaseCost = (quantity: number) => {
+      if (quantity <= 0) return null;
+      const cost = habitatPurchaseCostForVerifiedState(displayState, id, quantity);
+      return cost === null ? null : formatNatureAtoms(cost);
+    };
     const upgrades = purchasedHabitatProductionMilestones(displayState, id);
     const nextMilestone = nextHabitatProductionMilestone(displayState, id);
     return {
@@ -215,7 +222,13 @@ function toIslandSnapshot(
       level,
       nextCost: nextCost === null ? null : formatNatureAtoms(nextCost),
       canBuyOne: nextCost !== null && nextCost <= estimatedNatureAtoms,
-      maxAffordable: maxAffordableQuantity({ ...displayState, natureAtoms: estimatedNatureAtoms }, id),
+      maxAffordable,
+      purchaseCosts: {
+        one: purchaseCost(1),
+        ten: purchaseCost(10),
+        hundred: purchaseCost(100),
+        max: purchaseCost(maxAffordable),
+      },
       purchasedUpgradeCount: upgrades.length,
       productionUpgrades: isV1VerifiedState(displayState)
         ? []

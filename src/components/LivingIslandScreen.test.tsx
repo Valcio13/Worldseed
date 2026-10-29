@@ -381,7 +381,9 @@ describe('Living Island screen', () => {
           rulesVersion: 1,
           habitats: [{
             id: 'water', level: 1, nextCost: '10', canBuyOne: true,
-            maxAffordable: 2, purchasedUpgradeCount: 0, productionUpgrades: [],
+            maxAffordable: 2,
+            purchaseCosts: { one: '10', ten: null, hundred: null, max: '20' },
+            purchasedUpgradeCount: 0, productionUpgrades: [],
           }],
         }}
         verifiedActions={{
@@ -404,7 +406,7 @@ describe('Living Island screen', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Buy 1 Live Water' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Buy 1 Water for 10 Nature' }));
     expect(buyHabitat).toHaveBeenCalledWith('water', 1);
     expect(onStateChange).not.toHaveBeenCalled();
     expect(screen.getByTestId('verified-nature-counter')).toHaveTextContent('456');
@@ -582,24 +584,27 @@ describe('Living Island screen', () => {
     const state = { ...createEconomyState(1), nature: valueFromNumber(10) };
     const onStateChange = vi.fn();
     renderScreen(state, onStateChange);
-    fireEvent.click(screen.getByRole('button', { name: 'Buy 1 Water' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Buy 1× Water for 10 Nature' }));
     expect(onStateChange).toHaveBeenCalledOnce();
     expect(onStateChange.mock.calls[0]?.[0].state.habitats.water).toBe(1);
     expect(screen.getAllByText('Level 0 · 0 Nature/sec')).toHaveLength(6);
   });
 
-  it('offers fixed 1x, 10x, 100x, and max habitat purchase quantities', () => {
+  it('selects 1x, 10x, 100x, or max and buys the selected habitat quantity', () => {
     const state = { ...createEconomyState(1), nature: valueFromNumber(1_000_000_000) };
     const onStateChange = vi.fn();
     renderScreen(state, onStateChange);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Buy 10 Water' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Buy 100 Water' }));
+    fireEvent.click(screen.getByRole('button', { name: '10x' }));
+    fireEvent.click(screen.getByRole('button', { name: /Buy 10× Water for/ }));
+    fireEvent.click(screen.getByRole('button', { name: '100x' }));
+    fireEvent.click(screen.getByRole('button', { name: /Buy 100× Water for/ }));
 
     expect(onStateChange).toHaveBeenCalledTimes(2);
     expect(onStateChange.mock.calls[0]?.[0].state.habitats.water).toBe(10);
     expect(onStateChange.mock.calls[1]?.[0].state.habitats.water).toBe(100);
-    expect(screen.getByRole('button', { name: 'Buy maximum Water' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Max' }));
+    expect(screen.getByRole('button', { name: /Buy max · \d+ Water for/ })).toBeEnabled();
   });
 
   it('shows and purchases all six habitats through the guest economy when affordable', () => {
@@ -624,7 +629,7 @@ describe('Living Island screen', () => {
           : habitat === 'ancient-grove'
             ? 'Ancient Grove'
             : habitat[0]!.toUpperCase() + habitat.slice(1);
-      fireEvent.click(screen.getByRole('button', { name: `Buy 1 ${label}` }));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(`Buy 1× ${label} for`) }));
     }
     expect(onStateChange).toHaveBeenCalledTimes(HABITATS.length);
     HABITATS.forEach((habitat, index) => {
@@ -717,7 +722,7 @@ describe('Living Island screen', () => {
 
   it('keeps unavailable actions disabled and reports save status', () => {
     renderScreen(createEconomyState(1));
-    expect(screen.getByRole('button', { name: 'Buy 1 Water' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Buy 1× Water for/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Rebirth →' })).toBeDisabled();
     expect(screen.getByRole('heading', { name: 'Rebirth' })).toBeVisible();
     expect(screen.getByText(/Keep growing your island to reach the Nature goal/)).toBeVisible();

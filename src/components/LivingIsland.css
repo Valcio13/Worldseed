@@ -1885,6 +1885,36 @@
   justify-content: space-between;
   gap: 16px;
 }
+.living-shop-heading {
+  align-items: flex-end;
+}
+.living-habitat-buy-quantity {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--living-line);
+  border-radius: 9px;
+  background: var(--living-surface);
+}
+.living-habitat-buy-quantity button {
+  min-width: 40px;
+  min-height: 32px;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--living-muted);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.living-habitat-buy-quantity button[aria-pressed='true'] {
+  border-color: var(--living-sage);
+  color: var(--living-ink);
+  background: var(--living-card);
+  box-shadow: 0 1px 3px rgb(34 56 41 / 12%);
+}
 .living-eyebrow {
   display: block;
   color: var(--living-muted);
@@ -1981,21 +2011,27 @@
   font-size: 10px;
 }
 .living-habitat-actions {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
+  display: flex;
+  min-width: 116px;
+  justify-content: flex-end;
 }
 .living-habitat-actions button {
-  min-width: 42px;
-  padding: 4px 5px;
-  min-height: 38px;
+  display: grid;
+  width: 100%;
+  min-width: 116px;
+  min-height: 42px;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  padding: 5px 8px;
   border: 1px solid var(--living-sage);
   border-radius: var(--living-radius-small);
   color: var(--living-green);
   background: var(--living-green-soft);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   cursor: pointer;
+  white-space: nowrap;
 }
 .living-habitat-actions button:hover:not(:disabled) {
   background: var(--living-green-soft-hover);
@@ -2008,10 +2044,12 @@
 }
 .living-habitat-actions small {
   display: block;
-  overflow-wrap: anywhere;
+  max-width: 100%;
+  overflow: hidden;
   color: var(--living-green);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
+  text-overflow: ellipsis;
 }
 .living-habitat-upgrades {
   grid-column: 1 / -1;
@@ -2564,11 +2602,10 @@
     padding: 9px 8px;
   }
   .living-control-panel .living-habitat-actions {
-    min-width: 184px;
-    gap: 4px;
+    min-width: 116px;
   }
   .living-control-panel .living-habitat-actions button {
-    min-width: 0;
+    min-width: 116px;
     min-height: 38px;
     padding: 3px 6px;
   }
@@ -2648,6 +2685,14 @@
 }
 
 @media (max-width: 700px) {
+  .living-shop-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .living-habitat-buy-quantity {
+    max-width: 100%;
+  }
   .living-how-to-play-dialog.living-leaderboard-dialog {
     width: calc(100vw - 20px);
     max-height: min(88dvh, 760px);
@@ -2832,16 +2877,16 @@
     display: none;
   }
   .living-habitat-actions {
-    gap: 4px;
+    min-width: 108px;
   }
   .living-habitat-actions button {
-    min-width: 42px;
-    min-height: 35px;
-    padding: 3px 5px;
+    min-width: 108px;
+    min-height: 38px;
+    padding: 3px 6px;
     font-size: 10px;
   }
   .living-habitat-actions small {
-    font-size: 8px;
+    font-size: 9px;
   }
   .living-progression {
     grid-template-columns: 1fr;

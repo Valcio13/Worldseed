@@ -19,7 +19,7 @@ describe('background music startup preferences', () => {
     expect(audio.getAudioPreferences()).toMatchObject({
       musicEnabled: true,
       muted: false,
-      musicVolume: 0.15,
+      musicVolume: 0.3,
       sfxVolume: 1,
     });
   });

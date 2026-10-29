@@ -1415,11 +1415,25 @@
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   gap: 8px;
 }
+.living-verified-rebirth-actions .living-rebirth-button {
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+}
 .living-rebirth-button--secondary {
   justify-content: center;
   border-color: var(--living-sage);
   color: var(--living-green);
   background: var(--living-green-soft);
+  font-size: 11px;
+}
+.living-rebirth-button--start-run {
+  display: inline-flex;
+  width: auto;
+  min-height: 34px;
+  gap: 8px;
+  margin: 2px 0 8px;
+  padding: 0 12px;
   font-size: 11px;
 }
 .living-rebirth-button--secondary:hover:not(:disabled) {
@@ -1676,24 +1690,17 @@
     width: min(1480px, calc(100% - 48px));
     padding: 16px 0 24px;
     display: flex;
-    height: calc(100dvh - 68px);
-    min-height: 0;
+    min-height: calc(100dvh - 68px);
     box-sizing: border-box;
     flex-direction: column;
   }
   .living-desktop-layout {
-    flex: 1;
-    min-height: 0;
     display: grid;
     grid-template-columns: minmax(0, 1.85fr) minmax(320px, 1fr);
-    grid-template-rows: minmax(0, 1fr);
     align-items: start;
     gap: clamp(16px, 2vw, 28px);
   }
   .living-island-column {
-    position: sticky;
-    top: 82px;
-    align-self: stretch;
     display: flex;
     min-height: 0;
     flex-direction: column;
@@ -1702,20 +1709,12 @@
     flex: 0 0 auto;
   }
   .living-control-panel {
-    position: sticky;
-    top: 82px;
     display: grid;
-    height: calc(100dvh - 96px);
-    max-height: calc(100dvh - 96px);
-    min-height: 0;
     box-sizing: border-box;
     align-content: start;
     gap: 10px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding: 2px 7px 14px 1px;
-    scrollbar-gutter: stable;
-    scroll-padding-block: 12px;
+    overflow: visible;
+    padding: 2px 1px 14px;
   }
   .living-scene {
     flex: 1 1 auto;
@@ -1750,9 +1749,6 @@
   .living-control-panel .living-boosts {
     grid-template-columns: minmax(0, 1fr);
   }
-  .living-control-panel :focus-visible {
-    scroll-margin-block: 12px;
-  }
 }
 
 @media (min-width: 1001px) and (max-height: 650px) {
@@ -1777,10 +1773,6 @@
   }
   .living-resource {
     padding-block: 9px;
-  }
-  .living-control-panel {
-    height: calc(100dvh - 82px);
-    max-height: calc(100dvh - 82px);
   }
 }
 

@@ -353,15 +353,6 @@ function VerifiedIslandPanel({
   return (
     <>
       <article className="living-rebirth-card" id="rebirth" aria-labelledby="living-rebirth-title">
-        {!profile?.activeRun && profile?.authenticated && settlement?.openStartRun && (
-          <button
-            type="button"
-            className="living-rebirth-button living-rebirth-button--start-run"
-            onClick={settlement.openStartRun}
-          >
-            Start a Live run <span aria-hidden="true">→</span>
-          </button>
-        )}
         <div className="living-section-heading">
           <div>
             <span className="living-eyebrow">VERIFIED RUN</span>
@@ -385,7 +376,11 @@ function VerifiedIslandPanel({
           <i style={{ width: `${progress}%` }} />
         </div>
         {!profile?.activeRun ? (
-          <p className="living-rebirth-locked" role="status">Open Live account to authenticate and start a run.</p>
+          <p className="living-rebirth-locked" role="status">
+            {profile?.authenticated
+              ? 'Start a Live run to begin earning verified points.'
+              : 'Open Live account to authenticate and start a run.'}
+          </p>
         ) : !island ? (
           <p className="living-rebirth-locked" role="status">Syncing Live island progress. Open Advanced / Activity if this takes too long.</p>
         ) : canRebirth ? (
@@ -396,6 +391,15 @@ function VerifiedIslandPanel({
               ? `Reach score tier ${rebirthGoal} to unlock Rebirth.`
               : 'Authenticate this run to settle Live progress.'}
           </p>
+        )}
+        {!profile?.activeRun && profile?.authenticated && settlement?.openStartRun && (
+          <button
+            type="button"
+            className="living-rebirth-button living-rebirth-button--secondary living-rebirth-button--start-run"
+            onClick={settlement.openStartRun}
+          >
+            Start a Live run <span aria-hidden="true">→</span>
+          </button>
         )}
         <div className="living-rebirth-reward">
           <span>Settled balances</span>
@@ -840,6 +844,39 @@ export function LivingIslandScreen({
     exiting: boolean;
   } | null>(null);
   const noticeExitTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  useEffect(() => {
+    const dropdownSelector = '.audio-settings, .v3-living-account, .v3-advanced-activity';
+    const closeOtherDropdowns = (event: MouseEvent) => {
+      const activeDropdown =
+        event.target instanceof Element
+          ? event.target.closest<HTMLDetailsElement>(dropdownSelector)
+          : null;
+
+      document.querySelectorAll<HTMLDetailsElement>(dropdownSelector).forEach((dropdown) => {
+        if (dropdown !== activeDropdown) dropdown.open = false;
+      });
+    };
+    const closeDropdownsOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const openDropdown = document.querySelector<HTMLDetailsElement>(
+        `${dropdownSelector}[open]`,
+      );
+      if (!openDropdown) return;
+      event.preventDefault();
+      document.querySelectorAll<HTMLDetailsElement>(`${dropdownSelector}[open]`).forEach((dropdown) => {
+        dropdown.open = false;
+      });
+      openDropdown.querySelector('summary')?.focus();
+    };
+
+    document.addEventListener('click', closeOtherDropdowns);
+    document.addEventListener('keydown', closeDropdownsOnEscape);
+    return () => {
+      document.removeEventListener('click', closeOtherDropdowns);
+      document.removeEventListener('keydown', closeDropdownsOnEscape);
+    };
+  }, []);
 
   /* eslint-disable react-hooks/set-state-in-effect -- Keep a toast mounted briefly for its exit animation. */
   useEffect(() => {

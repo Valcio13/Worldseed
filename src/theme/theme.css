@@ -512,6 +512,52 @@ body {
   background: #2d4a39;
 }
 
+/* The Start Run dialog keeps a parchment surface in either theme, so dark-mode
+   V3 panel colors must not leak into its light controls. */
+:root[data-theme='dark'] .v3-start-run-dialog .v3-run-controls {
+  color: #294d3d;
+  background: transparent;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog .v3-panel-heading strong {
+  color: #1d3734;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog .v3-panel-kicker {
+  color: #6e8179;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog .v3-start-info {
+  background: rgba(100, 154, 110, 0.1);
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog .v3-start-info p {
+  color: #365b43;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog .v3-start-upgrades h4 {
+  color: #203936;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog .v3-start-upgrades > p:not(.v3-upgrades-hint),
+:root[data-theme='dark'] .v3-start-run-dialog .v3-start-upgrade-name {
+  color: #294d3d;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog .v3-upgrades-hint,
+:root[data-theme='dark'] .v3-start-run-dialog .v3-start-upgrade-name small,
+:root[data-theme='dark'] .v3-start-run-dialog .v3-start-note {
+  color: #63756a;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog .v3-start-upgrade-row {
+  background: #edf1e6;
+}
+
+:root[data-theme='dark'] .v3-start-run-dialog .v3-upgrade-level-display {
+  color: #203936;
+}
+
 :root[data-theme='dark'] .v3-controls-notice strong,
 :root[data-theme='dark'] .v3-start-upgrades h4,
 :root[data-theme='dark'] .v3-upgrade-level-display,

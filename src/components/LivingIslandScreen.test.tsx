@@ -27,7 +27,10 @@ function renderScreen(
   state: EconomyState,
   onStateChange = vi.fn(),
   notificationProps: Partial<
-    Pick<LivingIslandScreenProps, 'notice' | 'noticeImportant' | 'onNoticeDismiss'>
+    Pick<
+      LivingIslandScreenProps,
+      'notice' | 'noticeImportant' | 'onNoticeDismiss' | 'audioControls' | 'walletControl'
+    >
   > = {},
 ) {
   return render(
@@ -44,6 +47,39 @@ function renderScreen(
 }
 
 describe('Living Island screen', () => {
+  it('closes header dropdowns on outside click or Escape', () => {
+    renderScreen(createEconomyState(1), vi.fn(), {
+      audioControls: (
+        <details className="audio-settings" open>
+          <summary>Audio</summary>
+          <button type="button">Pause music</button>
+        </details>
+      ),
+      walletControl: (
+        <details className="v3-living-account" open>
+          <summary>Wallet</summary>
+          <button type="button">Disconnect</button>
+        </details>
+      ),
+    });
+
+    const audio = document.querySelector('.audio-settings');
+    const wallet = document.querySelector('.v3-living-account');
+    expect(audio).toHaveAttribute('open');
+    expect(wallet).toHaveAttribute('open');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause music' }));
+    expect(audio).toHaveAttribute('open');
+    expect(wallet).not.toHaveAttribute('open');
+
+    fireEvent.click(document.body);
+    expect(audio).not.toHaveAttribute('open');
+
+    (audio as HTMLDetailsElement).open = true;
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(audio).not.toHaveAttribute('open');
+  });
+
   it('shows a compact dismissible toast and marks important notices as alerts', () => {
     const dismiss = vi.fn();
     const { container, rerender } = renderScreen(createEconomyState(1), vi.fn(), {

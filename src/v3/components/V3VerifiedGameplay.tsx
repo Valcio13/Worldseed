@@ -511,11 +511,6 @@ export function V3VerifiedGameplay({
           </button>
         </div>
       )}
-      {!queue.state?.heartQueueBlocked && pendingHeartClicks > 0 && (
-        <p className="living-notice" role="status" aria-live="polite">
-          {pendingHeartClicks} Heart click{pendingHeartClicks === 1 ? '' : 's'} syncing with the verifier.
-        </p>
-      )}
       {queue.state && (
           <V3CommandQueue
           queueState={queue.state}

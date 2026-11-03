@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { V3IslandProgression } from './V3IntegrationShell';
 
@@ -175,6 +175,8 @@ describe('Living Island verified controls', () => {
     const signInButton = screen.getByRole('button', { name: 'Sign in again' });
     expect(signInButton).toBeEnabled();
     fireEvent.click(signInButton);
+    const dialog = screen.getByRole('dialog', { name: 'Authenticate wallet' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Sign in again' }));
     expect(authenticate).toHaveBeenCalledOnce();
   });
 
@@ -195,6 +197,32 @@ describe('Living Island verified controls', () => {
     fireEvent.click(screen.getByText('Live account'));
     fireEvent.click(screen.getByRole('button', { name: 'Connect wallet' }));
     expect(connectAsync).toHaveBeenCalledWith({ connector: { id: 'injected' } });
+  });
+
+  it('opens an authentication modal after connecting without requesting a signature automatically', async () => {
+    const address = '0x0000000000000000000000000000000000000001';
+    const authenticate = vi.fn();
+    const view = renderProgression();
+    fireEvent.click(screen.getByText('Live account'));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect wallet' }));
+    await act(async () => { await Promise.resolve(); });
+
+    useAccountMock.mockReturnValue({ status: 'connected', address });
+    useV3RunMock.mockReturnValue(runState({
+      wallet: address,
+      isCorrectChain: true,
+      canAccessV3: true,
+    }));
+    useV3AuthMock.mockReturnValue(authState({ canAuthenticate: true, authenticate }));
+    view.rerender(<V3IslandProgression {...callbacks()} />);
+
+    expect(screen.getByRole('dialog', { name: 'Authenticate wallet' })).toBeTruthy();
+    expect(screen.getByText(/does not submit a transaction or spend funds/)).toBeTruthy();
+    expect(authenticate).not.toHaveBeenCalled();
+
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Authenticate wallet' }))
+      .getByRole('button', { name: 'Authenticate wallet' }));
+    expect(authenticate).toHaveBeenCalledOnce();
   });
 
   it('prompts to reconnect a disconnected Live wallet and offers Guest mode', () => {

@@ -14,6 +14,7 @@ import type { V3RewardRules, V3UpgradeKind } from '../v3/types';
 import { TARGET_CHAIN_ID } from '../blockchain/config';
 import { TARGET_NETWORK_LABEL } from '../blockchain/networkPresentation';
 import { playIslandSound } from '../game/sound';
+import './V3AuthPrompt.css';
 import './V3IntegrationShell.css';
 
 export interface V3LivingProfile {
@@ -101,6 +102,8 @@ function VerifiedProgression({
   const { switchChainAsync, isPending: switching } = useSwitchChain();
   const walletAccount = useAccount();
   const [walletError, setWalletError] = useState<string | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const promptAfterConnect = useRef(false);
   const [startRunOpen, setStartRunOpen] = useState(false);
   const activeVerifiedRunId =
     runState.runId > 0n && runState.run?.status === 'ACTIVE'
@@ -133,18 +136,37 @@ function VerifiedProgression({
   const statusRunState = { ...runState, canAccessV3: Boolean(runState.canAccessV3) };
   const hasActiveRun = runState.runId > 0n && runState.run?.status === 'ACTIVE';
   const isAuthenticating = ['requesting-challenge', 'signing', 'completing'].includes(auth.status);
-
-  useEffect(() => {
-    if (!startRunOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setStartRunOpen(false);
-    };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [startRunOpen]);
   const canAuthenticate = Boolean(auth.canAuthenticate && authenticationRunId !== undefined);
   const walletReconnecting = walletAccount.status === 'reconnecting';
   const walletReady = walletAccount.status === 'connected';
+
+  useEffect(() => {
+    if (
+      promptAfterConnect.current &&
+      walletReady &&
+      runState.wallet &&
+      runState.isCorrectChain
+    ) {
+      promptAfterConnect.current = false;
+      if (!auth.isAuthenticated) setAuthModalOpen(true);
+    }
+  }, [auth.isAuthenticated, runState.isCorrectChain, runState.wallet, walletReady]);
+
+  useEffect(() => {
+    if (auth.isAuthenticated) setAuthModalOpen(false);
+  }, [auth.isAuthenticated]);
+
+  useEffect(() => {
+    if (!startRunOpen && !authModalOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setStartRunOpen(false);
+        setAuthModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [authModalOpen, startRunOpen]);
   const walletBusy = connecting || switching || walletReconnecting;
   const flowBusy = [
     'fetching-next-run-id',
@@ -177,6 +199,7 @@ function VerifiedProgression({
         const connector = connectors[0];
         if (!connector)
           throw new Error('No browser wallet was found. Install a wallet extension to continue.');
+        promptAfterConnect.current = true;
         await connectAsync({ connector });
       } else if (!runState.isCorrectChain) {
         await switchChainAsync({ chainId: TARGET_CHAIN_ID });
@@ -185,6 +208,7 @@ function VerifiedProgression({
         disconnect();
       }
     } catch (error) {
+      if (!runState.wallet) promptAfterConnect.current = false;
       setWalletError(error instanceof Error ? error.message : 'Wallet request failed.');
     }
   }
@@ -368,6 +392,72 @@ function VerifiedProgression({
           </section>
         </div>
       )}
+      {authModalOpen && walletReady && runState.wallet && runState.isCorrectChain && !walletReconnectRequired && (
+        <div
+          className="v3-auth-prompt-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setAuthModalOpen(false);
+          }}
+        >
+          <section
+            className="v3-auth-prompt-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="v3-auth-prompt-title"
+            aria-describedby="v3-auth-prompt-description"
+          >
+            <header>
+              <div>
+                <span>LIVE MODE · {TARGET_NETWORK_LABEL}</span>
+                <h2 id="v3-auth-prompt-title">Authenticate wallet</h2>
+              </div>
+              <button
+                type="button"
+                className="v3-auth-prompt-close"
+                aria-label="Close authentication dialog"
+                autoFocus
+                onClick={() => setAuthModalOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="v3-auth-prompt-content">
+              <p id="v3-auth-prompt-description">
+                Authenticate to load and play your Live run. Your wallet will ask you to sign a message; this does not submit a transaction or spend funds.
+              </p>
+              <p className="v3-auth-prompt-address">{runState.wallet}</p>
+              {(auth.error || walletError) && (
+                <p className="v3-auth-prompt-error" role="alert">{auth.error ?? walletError}</p>
+              )}
+              {isAuthenticating && (
+                <p className="v3-auth-prompt-status" role="status" aria-live="polite">
+                  Check your wallet and approve the sign-in message.
+                </p>
+              )}
+              <button
+                type="button"
+                className="v3-auth-prompt-submit"
+                onClick={() => void authenticateWallet()}
+                disabled={!canAuthenticate || isAuthenticating}
+              >
+                {isAuthenticating
+                  ? 'Waiting for wallet…'
+                  : auth.error === 'Session expired'
+                    ? 'Sign in again'
+                    : 'Authenticate wallet'}
+              </button>
+              <button
+                type="button"
+                className="v3-auth-prompt-later"
+                onClick={() => setAuthModalOpen(false)}
+                disabled={isAuthenticating}
+              >
+                Not now
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       <details className="v3-living-account">
         <summary>
           {runState.wallet ? `${runState.wallet.slice(0, 6)}…${runState.wallet.slice(-4)}` : 'Live account'}
@@ -400,14 +490,10 @@ function VerifiedProgression({
               ) : (
                 <button
                   type="button"
-                  onClick={() => void authenticateWallet()}
-                  disabled={!walletReady || !canAuthenticate || isAuthenticating}
+                  onClick={() => setAuthModalOpen(true)}
+                  disabled={!walletReady || !runState.isCorrectChain}
                 >
-                  {isAuthenticating
-                    ? 'Authenticating…'
-                    : auth.error === 'Session expired'
-                      ? 'Sign in again'
-                      : 'Authenticate wallet'}
+                  {auth.error === 'Session expired' ? 'Sign in again' : 'Authenticate wallet'}
                 </button>
               )}
               {!hasActiveRun && auth.isAuthenticated && (

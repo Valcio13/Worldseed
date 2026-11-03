@@ -622,7 +622,7 @@ function VerifiedIslandPanel({
             Record Points
           </button>
           <button
-            className="living-rebirth-button"
+            className={`living-rebirth-button${canRebirth && !settlement?.pending ? ' living-rebirth-button--ready' : ''}`}
             type="button"
             onClick={() => settlement?.rebirth()}
             disabled={!canRebirth}
@@ -962,9 +962,18 @@ function LivingIsland({
       >
         <span key={heartClicks} className="island-heart-sprite" aria-hidden="true" />
         {heartClicks > 0 && (
-          <span key={`feedback-${heartClicks}`} className="heart-click-feedback" aria-hidden="true">
-            +1 Nature
-          </span>
+          <>
+            <span key={`wave-${heartClicks}`} className="heart-pulse-wave" aria-hidden="true" />
+            <span key={`burst-${heartClicks}`} className="heart-click-burst" aria-hidden="true">
+              <i className="heart-spark heart-spark--1" />
+              <i className="heart-spark heart-spark--2" />
+              <i className="heart-spark heart-spark--3" />
+              <i className="heart-spark heart-spark--4" />
+            </span>
+            <span key={`feedback-${heartClicks}`} className="heart-click-feedback" aria-hidden="true">
+              +1 Nature
+            </span>
+          </>
         )}
         <span className="island-heart-label">
           {isVerified ? 'Live • Collect Nature' : 'Collect Nature'}
@@ -1301,7 +1310,7 @@ export function LivingIslandScreen({
                 <strong>+{reward.cp} simulated CP</strong>
               </div>
               <button
-                className="living-rebirth-button"
+                className={`living-rebirth-button${canRebirth(state) ? ' living-rebirth-button--ready' : ''}`}
                 type="button"
                 onClick={onRebirth}
                 disabled={!canRebirth(state)}

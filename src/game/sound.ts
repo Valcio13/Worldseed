@@ -346,17 +346,19 @@ export function playIslandSound(kind: IslandSound): void {
   const context = ensureAudioContext();
   if (!context || !sfxBus) return;
   const now = context.currentTime;
-  const duration = kind === 'evolution' || kind === 'complete' ? 0.48 : 0.28;
+  const isCollect = kind === 'collect';
+  const duration = kind === 'evolution' || kind === 'complete' ? 0.48 : isCollect ? 0.16 : 0.28;
+  const noteSpacing = isCollect ? 0.035 : 0.055;
   if (now < sfxBusyUntil) return;
-  sfxBusyUntil = now + duration + (SFX_NOTES[kind].length - 1) * 0.055;
+  sfxBusyUntil = now + (isCollect ? 0.08 : duration + (SFX_NOTES[kind].length - 1) * noteSpacing);
   SFX_NOTES[kind].forEach((frequency, index) => {
     const oscillator = context.createOscillator();
     const gain = context.createGain();
-    const start = now + index * 0.055;
+    const start = now + index * noteSpacing;
     oscillator.type = 'sine';
     oscillator.frequency.setValueAtTime(frequency, start);
     gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(0.09, start + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.09, start + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
     oscillator.connect(gain);
     gain.connect(sfxBus!);

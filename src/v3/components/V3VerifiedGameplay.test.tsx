@@ -15,13 +15,14 @@ import type { V3CommandQueueState } from '../types';
 import { V3VerifiedGameplay } from './V3VerifiedGameplay';
 import { parseV3CanonicalState } from '../canonicalState';
 import { V3ApiError } from '../api';
+import { seasonIdAt, seasonStartAt } from '../../incremental/season';
 
 const { useV3CommandsMock } = vi.hoisted(() => ({ useV3CommandsMock: vi.fn() }));
 vi.mock('../hooks/useV3Commands', () => ({ useV3Commands: useV3CommandsMock }));
 
 const runId = '7';
 const token = 'verified-session';
-const startedAtMs = Date.UTC(2026, 9, 26);
+const startedAtMs = seasonStartAt(seasonIdAt(Date.now()));
 const wallet = '0x0000000000000000000000000000000000000001' as `0x${string}`;
 const submitCommandMock = vi.fn();
 const enqueueCommandMock = vi.fn(() => true);

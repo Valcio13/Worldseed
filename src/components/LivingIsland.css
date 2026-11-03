@@ -1639,7 +1639,7 @@
   cursor: pointer;
   filter: drop-shadow(0 5px 0 rgba(53, 84, 50, 0.17));
   transition:
-    transform 0.16s ease,
+    transform 0.14s cubic-bezier(0.175, 0.885, 0.32, 1.275),
     filter 0.16s ease;
 }
 .island-heart:focus-visible {
@@ -1647,11 +1647,12 @@
   outline-offset: 3px;
 }
 .island-heart:hover {
-  transform: translateX(-50%) translateY(-4px) scale(1.04);
-  filter: drop-shadow(0 8px 0 rgba(53, 84, 50, 0.14));
+  transform: translateX(-50%) translateY(-5px) scale(1.05);
+  filter: drop-shadow(0 9px 3px rgba(53, 84, 50, 0.2));
 }
 .island-heart:active {
-  transform: translateX(-50%) translateY(2px) scale(0.97);
+  transform: translateX(-50%) translateY(2px) scale(0.93);
+  filter: drop-shadow(0 2px 0 rgba(53, 84, 50, 0.12));
 }
 .island-heart::before {
   position: absolute;
@@ -1690,6 +1691,56 @@
   background: rgba(255, 232, 128, 0.62);
   scale: 1.1;
 }
+.heart-pulse-wave {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 142px;
+  height: 142px;
+  border: 2px solid rgba(255, 238, 140, 0.9);
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translateX(-50%) scale(0.7);
+  animation: heart-pulse-expand 0.38s cubic-bezier(0.15, 0.85, 0.35, 1) forwards;
+  box-shadow: 0 0 16px rgba(255, 225, 95, 0.45);
+}
+.heart-click-burst {
+  position: absolute;
+  top: 35px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+.heart-spark {
+  position: absolute;
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.heart-spark--1 {
+  background: #ffd647;
+  box-shadow: 0 0 6px #ffd947;
+  animation: heart-spark-drift-1 0.48s ease-out forwards;
+}
+.heart-spark--2 {
+  background: #a3e670;
+  box-shadow: 0 0 6px #8ad453;
+  animation: heart-spark-drift-2 0.48s ease-out forwards;
+}
+.heart-spark--3 {
+  background: #ffeaa1;
+  box-shadow: 0 0 6px #ffeaa1;
+  animation: heart-spark-drift-3 0.48s ease-out forwards;
+}
+.heart-spark--4 {
+  background: #7bd368;
+  box-shadow: 0 0 6px #66b554;
+  animation: heart-spark-drift-4 0.48s ease-out forwards;
+}
 .island-heart-sprite {
   display: block;
   width: 144px;
@@ -1698,23 +1749,27 @@
   image-rendering: pixelated;
 }
 .island-heart--clicked .island-heart-sprite {
-  animation: heart-throb 0.24s cubic-bezier(0.2, 0.75, 0.25, 1);
+  animation: heart-throb 0.28s cubic-bezier(0.2, 0.75, 0.25, 1);
 }
 .heart-click-feedback {
   position: absolute;
-  top: 3%;
+  top: 1%;
   left: 50%;
-  z-index: 3;
-  padding: 4px 8px;
-  border: 1px solid #bb9a54;
-  border-radius: 5px;
-  color: #6f5428;
-  background: #fff1b9;
-  font-size: 12px;
+  z-index: 5;
+  padding: 4px 10px;
+  border: 1px solid rgba(187, 154, 84, 0.75);
+  border-radius: 6px;
+  color: #58411b;
+  background: linear-gradient(180deg, #fffbe6 0%, #ffefb7 100%);
+  box-shadow:
+    0 2px 8px rgba(78, 59, 23, 0.16),
+    0 0 10px rgba(255, 232, 128, 0.4);
+  font-family: var(--font-pixel, inherit);
+  font-size: 13px;
   font-weight: 800;
   white-space: nowrap;
   pointer-events: none;
-  animation: nature-pop 0.72s ease-out both;
+  animation: nature-pop 0.68s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .living-scene--flourishing .island-heart-sprite {
   background-position: right top;
@@ -1739,6 +1794,14 @@
   color: white;
   background: #d7963f;
   font-size: 13px;
+  box-shadow: 0 2px 6px rgba(168, 124, 57, 0.3);
+  transition: transform 0.12s ease;
+}
+.island-heart:hover strong {
+  transform: scale(1.08) rotate(4deg);
+}
+.island-heart:active strong {
+  transform: scale(0.95);
 }
 .island-stage-label {
   display: inline-flex;
@@ -1799,46 +1862,126 @@
 }
 
 @keyframes heart-throb {
-  0%,
-  100% {
-    transform: scale(1);
+  0% {
+    transform: scale(0.94);
   }
   38% {
-    transform: scale(1.13) translateY(-3px);
-    filter: brightness(1.12);
+    transform: scale(1.15) translateY(-3px);
+    filter: brightness(1.15);
   }
   72% {
     transform: scale(0.98);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 
 @keyframes nature-pop {
   0% {
     opacity: 0;
-    transform: translate(-50%, 8px) scale(0.86);
+    transform: translate(-50%, 10px) scale(0.8);
   }
   18% {
     opacity: 1;
-    transform: translate(-50%, 0) scale(1);
+    transform: translate(-50%, -2px) scale(1.12);
   }
-  70% {
+  65% {
     opacity: 1;
-    transform: translate(-50%, -13px);
+    transform: translate(-50%, -18px) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -22px);
+    transform: translate(-50%, -34px) scale(0.92);
   }
 }
 
 @keyframes heart-bloom {
   0% {
-    opacity: 0.8;
+    opacity: 0.85;
     transform: translateX(-50%) scale(0.72);
   }
   100% {
     opacity: 0;
-    transform: translateX(-50%) scale(1.18);
+    transform: translateX(-50%) scale(1.24);
+  }
+}
+
+@keyframes heart-pulse-expand {
+  0% {
+    opacity: 0.9;
+    transform: translateX(-50%) scale(0.7);
+    border-color: rgba(255, 240, 160, 0.95);
+  }
+  60% {
+    opacity: 0.5;
+    border-color: rgba(146, 219, 102, 0.7);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) scale(1.38);
+  }
+}
+
+@keyframes heart-spark-drift-1 {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-28px, -24px) scale(0.3);
+  }
+}
+
+@keyframes heart-spark-drift-2 {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(26px, -26px) scale(0.3);
+  }
+}
+
+@keyframes heart-spark-drift-3 {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-10px, -36px) scale(0.2);
+  }
+}
+
+@keyframes heart-spark-drift-4 {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(18px, -32px) scale(0.2);
+  }
+}
+
+@keyframes rebirth-ready-pulse {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(118, 175, 85, 0.35), 0 2px 6px rgba(50, 80, 40, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(118, 175, 85, 0.75), 0 2px 8px rgba(50, 80, 40, 0.28);
+  }
+}
+
+@keyframes rebirth-track-glow {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
   }
 }
 
@@ -1959,6 +2102,13 @@
   border: 1px solid var(--living-line);
   border-radius: var(--living-radius-control);
   background: var(--living-ivory);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.living-habitat:hover {
+  border-color: var(--living-sage);
+  box-shadow: 0 3px 10px rgba(50, 75, 45, 0.06);
 }
 .living-habitat-icon {
   display: grid;
@@ -2032,9 +2182,21 @@
   font-weight: 800;
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    background 0.14s ease,
+    border-color 0.14s ease,
+    box-shadow 0.14s ease,
+    transform 0.1s ease;
 }
 .living-habitat-actions button:hover:not(:disabled) {
   background: var(--living-green-soft-hover);
+  border-color: var(--living-green);
+  box-shadow: 0 2px 8px rgba(78, 118, 70, 0.18);
+  transform: translateY(-1px);
+}
+.living-habitat-actions button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.96);
+  box-shadow: none;
 }
 .living-habitat-actions button:disabled {
   border-color: var(--living-line);
@@ -2151,6 +2313,10 @@
   font-size: 8px;
   font-weight: 800;
   cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    transform 0.1s ease;
 }
 .living-habitat-upgrade-meta button:disabled {
   border-color: var(--living-line);
@@ -2160,6 +2326,11 @@
 }
 .living-habitat-upgrade--available .living-habitat-upgrade-meta button:not(:disabled):hover {
   background: var(--living-green-soft-hover);
+  border-color: var(--living-green);
+  transform: translateY(-1px);
+}
+.living-habitat-upgrade--available .living-habitat-upgrade-meta button:not(:disabled):active {
+  transform: translateY(1px) scale(0.96);
 }
 .living-habitat-upgrade-note {
   display: block;
@@ -2220,6 +2391,11 @@
   background: linear-gradient(90deg, var(--living-meadow), var(--living-gold));
   transition: width 0.25s ease;
 }
+.living-rebirth-track[aria-valuenow="100"] i {
+  background: linear-gradient(90deg, #6ca758, #ffdf60, #6ca758);
+  background-size: 200% 100%;
+  animation: rebirth-track-glow 2.4s linear infinite;
+}
 .living-rebirth-reward {
   display: flex;
   flex-wrap: wrap;
@@ -2263,9 +2439,28 @@
   background: var(--living-green);
   font-weight: 800;
   cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.1s ease;
 }
 .living-rebirth-button:hover:not(:disabled) {
   background: var(--living-green-hover);
+  transform: translateY(-1px);
+}
+.living-rebirth-button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+.living-rebirth-button--ready {
+  animation: rebirth-ready-pulse 2.2s ease-in-out infinite;
+}
+.living-rebirth-button--ready span {
+  display: inline-block;
+  transition: transform 0.16s ease;
+}
+.living-rebirth-button--ready:hover:not(:disabled) span {
+  transform: translateX(4px);
 }
 .living-rebirth-button:disabled {
   border-color: var(--living-line);
@@ -2381,8 +2576,24 @@
   color: var(--living-ink);
   background: var(--living-card);
   cursor: pointer;
+  transition:
+    background 0.14s ease,
+    border-color 0.14s ease,
+    box-shadow 0.14s ease,
+    transform 0.1s ease;
+}
+.living-upgrade:hover:not(:disabled) {
+  border-color: var(--living-sage);
+  background: var(--living-warm-surface);
+  box-shadow: 0 2px 6px rgba(50, 75, 45, 0.08);
+  transform: translateY(-1px);
+}
+.living-upgrade:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: none;
 }
 .living-upgrade:disabled {
+  border-color: var(--living-line);
   color: var(--living-disabled);
   background: var(--living-surface);
   cursor: not-allowed;
@@ -2438,6 +2649,21 @@
   background: var(--living-card);
   text-align: left;
   cursor: pointer;
+  transition:
+    background 0.14s ease,
+    border-color 0.14s ease,
+    box-shadow 0.14s ease,
+    transform 0.1s ease;
+}
+.living-boosts button:hover:not(:disabled) {
+  border-color: var(--living-sage);
+  background: var(--living-warm-surface);
+  box-shadow: 0 2px 6px rgba(78, 118, 70, 0.12);
+  transform: translateY(-1px);
+}
+.living-boosts button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.97);
+  box-shadow: none;
 }
 .living-boosts button:disabled {
   color: var(--living-disabled);
@@ -2963,7 +3189,10 @@
     animation: none;
   }
   .island-heart--clicked .island-heart-sprite,
-  .heart-click-feedback {
+  .heart-click-feedback,
+  .heart-pulse-wave,
+  .heart-spark,
+  .living-rebirth-button--ready {
     animation: none;
   }
 }

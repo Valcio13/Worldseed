@@ -152,7 +152,7 @@ describe('first guest journey', () => {
     for (let click = 0; click < 10; click += 1) {
       await user.click(screen.getByRole('button', { name: /click the island heart to collect 1 nature/i }));
     }
-    await user.click(screen.getByRole('button', { name: /buy 1 water/i }));
+    await user.click(screen.getByRole('button', { name: /buy (?:1|1×).*water/i }));
     expect(screen.getByTestId('nature-counter')).toHaveTextContent('0');
     expect(screen.getAllByText('0.3').length).toBeGreaterThan(0);
     expect(screen.getByText(/bought 1 water habitat/i)).toBeInTheDocument();
@@ -202,8 +202,8 @@ describe('first guest journey', () => {
       </WagmiProvider>,
     );
 
-    expect(screen.getByRole('button', { name: /buy 1 water/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /buy maximum grass/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /buy (?:1|1×).*water/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /buy (?:1|1×).*grass/i })).toBeDisabled();
     expect(screen.queryByRole('button', { name: /place/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument();
   });

@@ -74,6 +74,7 @@ vi.mock('wagmi', () => ({
   useSwitchChain: () => ({ switchChainAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('../blockchain/config', () => ({
+  IS_HEMI_MAINNET: false,
   TARGET_CHAIN_ID: 743111,
   TARGET_CHAIN_NAME: 'Hemi Sepolia',
 }));

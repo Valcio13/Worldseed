@@ -14,5 +14,9 @@ out/
 artifacts/
 cache/
 broadcast/
+*.log
+temp_*
+*test_output*
+*test_result*
 .DS_Store
 Thumbs.db

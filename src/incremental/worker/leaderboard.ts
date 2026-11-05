@@ -9,6 +9,8 @@ export interface LeaderboardChain {
   getLeaderboardHead(): Promise<{
     seasonId: bigint;
     deploymentSeasonId: bigint;
+    /** First confirmed-chain block whose timestamp belongs to the active season. */
+    currentSeasonStartBlock: bigint;
     confirmedBlock: bigint;
     confirmedBlockHash: Hex;
     confirmedTimestamp: bigint;
@@ -74,8 +76,8 @@ export class SeasonalLeaderboard {
         )
         .bind(
           ...key,
-          safeNumber(this.deploymentBlock),
-          safeNumber(this.deploymentBlock - 1n),
+          safeNumber(head.currentSeasonStartBlock),
+          safeNumber(head.currentSeasonStartBlock - 1n),
           this.now(),
         )
         .run(),
@@ -87,6 +89,31 @@ export class SeasonalLeaderboard {
       .bind(...key)
       .first<ScanRow>();
     if (!scan) throw new Error('Leaderboard scan cursor is unavailable.');
+
+    // The leaderboard only returns the active season. Skip historical seasons when
+    // initializing an older cursor (or crossing a season boundary) instead of making
+    // players page through the contract's entire history before seeing current results.
+    if (BigInt(scan.next_block) < head.currentSeasonStartBlock) {
+      const fastForward = await this.db
+        .prepare(
+          `UPDATE leaderboard_scans SET next_block = ?, scanned_through = ?, scanned_block_hash = NULL, updated_at_ms = ?
+           WHERE chain_id = ? AND verifying_contract = ? AND next_block = ?`,
+        )
+        .bind(
+          safeNumber(head.currentSeasonStartBlock),
+          safeNumber(head.currentSeasonStartBlock - 1n),
+          this.now(),
+          ...key,
+          scan.next_block,
+        )
+        .run();
+      assertD1(fastForward);
+      scan = {
+        next_block: safeNumber(head.currentSeasonStartBlock),
+        scanned_through: safeNumber(head.currentSeasonStartBlock - 1n),
+        scanned_block_hash: null,
+      };
+    }
 
     if (scan.scanned_block_hash && scan.scanned_through >= Number(this.deploymentBlock)) {
       const canonicalHash = await this.chain.getLeaderboardBlockHash(BigInt(scan.scanned_through));
@@ -103,8 +130,8 @@ export class SeasonalLeaderboard {
                WHERE chain_id = ? AND verifying_contract = ? AND scanned_through = ?`,
             )
             .bind(
-              safeNumber(this.deploymentBlock),
-              safeNumber(this.deploymentBlock - 1n),
+              safeNumber(head.currentSeasonStartBlock),
+              safeNumber(head.currentSeasonStartBlock - 1n),
               this.now(),
               ...key,
               scan.scanned_through,

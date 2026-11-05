@@ -786,6 +786,7 @@ describe('seasonal leaderboard indexing', () => {
       getLeaderboardHead: async () => ({
         seasonId: 9n,
         deploymentSeasonId: 9n,
+        currentSeasonStartBlock: 3_100n,
         confirmedBlock: 3_150n,
         confirmedBlockHash: BLOCK_HASH as `0x${string}`,
         confirmedTimestamp: 1_798_000_000n,
@@ -803,8 +804,13 @@ describe('seasonal leaderboard indexing', () => {
       },
     };
     const leaderboard = new SeasonalLeaderboard(db, chain, String(TEST_CHAIN_ID), contract, 2_100n, () => NOW);
+    // Simulate a cursor left behind in a prior season: the current-season request
+    // must jump directly to the new season boundary.
+    await db.prepare(`INSERT INTO leaderboard_scans(
+      chain_id, verifying_contract, next_block, scanned_through, scanned_block_hash, updated_at_ms
+    ) VALUES (?, ?, ?, ?, NULL, ?)`).bind(String(TEST_CHAIN_ID), contract.toLowerCase(), 2_100, 2_099, NOW).run();
     const first = await leaderboard.getCurrentSeason();
-    assert.equal(first.indexing, true);
+    assert.equal(first.indexing, false);
     const completed = await leaderboard.getCurrentSeason();
     assert.equal(completed.indexing, false);
     assert.equal(completed.seasonId, '9');

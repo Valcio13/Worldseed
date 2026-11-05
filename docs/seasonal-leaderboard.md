@@ -4,7 +4,7 @@ The Live leaderboard reads confirmed `RebirthSettled` events from the configured
 
 Nature is indexed from the settlement event's `natureCollectedAtoms` field. It therefore represents Nature earned in runs that have completed Rebirth; un-settled active or abandoned runs are not represented. Values are stored as integer atoms (`10^12` atoms per Nature) and aggregated with integer arithmetic.
 
-The public `GET /api/v3/leaderboard` endpoint scans at most 1,000 confirmed blocks per request and resumes from a D1 cursor. Reopening or refreshing the leaderboard advances historical indexing until current confirmed history is reached. Duplicate event ingestion is prevented by transaction hash and log index. A changed checkpoint block hash triggers a rebuild of the index for that contract.
+The public `GET /api/v3/leaderboard` endpoint scans at most 1,000 confirmed blocks per request and resumes from a D1 cursor. It locates the active season's first block with a timestamp binary search, so a new or stale cursor skips prior seasons instead of requiring a full deployment-history scan. Reopening or refreshing the leaderboard advances current-season indexing until confirmed history is reached. Duplicate event ingestion is prevented by transaction hash and log index. A changed checkpoint block hash triggers a rebuild of the current-season index for that contract.
 
 The modal also shows community-wide CP for the season directly from the contract's `totalSeasonCP` and `MAX_SEASON_POINTS` getters. The bar is progress toward the contract's shared seasonal CP cap (currently 1,000,000), not a separate community reward goal. It remains accurate even while the leaderboard event index is catching up.
 

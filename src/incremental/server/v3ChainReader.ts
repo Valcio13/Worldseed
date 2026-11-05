@@ -10,6 +10,7 @@ import {
 } from 'viem';
 import {
   ppUpgradeCost,
+  SEASON_EPOCH_MONDAY_SECONDS,
   seasonIdAtMilliseconds,
   type UpgradeChoice,
   type UpgradeLevels,
@@ -207,6 +208,7 @@ export class V3ChainStateReader implements RunAuthorityReader {
   async getLeaderboardHead(): Promise<{
     seasonId: bigint;
     deploymentSeasonId: bigint;
+    currentSeasonStartBlock: bigint;
     confirmedBlock: bigint;
     confirmedBlockHash: Hex;
     confirmedTimestamp: bigint;
@@ -235,6 +237,22 @@ export class V3ChainStateReader implements RunAuthorityReader {
     const deploymentSeasonId = BigInt(
       seasonIdAtMilliseconds(asSafeNumber(deploymentBlock.timestamp * 1_000n, 'Deployment time')),
     );
+    const seasonStartTimestamp =
+      BigInt(SEASON_EPOCH_MONDAY_SECONDS) + seasonId * 7n * 24n * 60n * 60n;
+    let currentSeasonStartBlock = this.config.deploymentBlock;
+    if (deploymentBlock.timestamp < seasonStartTimestamp) {
+      // Binary-search timestamps instead of paging through every block since
+      // deployment. Only the current season is returned by the public leaderboard.
+      let low = this.config.deploymentBlock + 1n;
+      let high = confirmedBlock + 1n;
+      while (low < high) {
+        const middle = (low + high) / 2n;
+        const candidate = await this.client.getBlock({ blockNumber: middle });
+        if (candidate.timestamp >= seasonStartTimestamp) high = middle;
+        else low = middle + 1n;
+      }
+      currentSeasonStartBlock = low;
+    }
     const [communityCP, seasonEndsAt] = await Promise.all([
       this.client.readContract({
         address: this.config.contractAddress,
@@ -254,6 +272,7 @@ export class V3ChainStateReader implements RunAuthorityReader {
     return {
       seasonId,
       deploymentSeasonId,
+      currentSeasonStartBlock,
       confirmedBlock,
       confirmedBlockHash: block.hash,
       confirmedTimestamp: block.timestamp,
